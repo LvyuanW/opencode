@@ -5,6 +5,7 @@ import { Config } from "../config/config"
 import { Instance } from "../project/instance"
 import { NamedError } from "@opencode-ai/util/error"
 import { ConfigMarkdown } from "../config/markdown"
+import { ConfigPaths } from "../config/paths"
 import { Log } from "../util/log"
 import { Global } from "@/global"
 import { Filesystem } from "@/util/filesystem"
@@ -108,11 +109,11 @@ export class SkillService extends ServiceMap.Service<SkillService, SkillService.
       const instance = yield* InstanceContext
       const discovery = yield* DiscoveryService
 
-      const skills: Record<string, Skill.Info> = {}
-      const skillDirs = new Set<string>()
-      let task: Promise<void> | undefined
-
-      const addSkill = async (match: string) => {
+      const addSkill = async (
+        match: string,
+        skills: Record<string, Skill.Info>,
+        skillDirs: Set<string>,
+      ) => {
         const md = await ConfigMarkdown.parse(match).catch(async (err) => {
           const message = ConfigMarkdown.FrontmatterError.isInstance(err)
             ? err.data.message
@@ -147,7 +148,12 @@ export class SkillService extends ServiceMap.Service<SkillService, SkillService.
         }
       }
 
-      const scanExternal = async (root: string, scope: "global" | "project") => {
+      const scanExternal = async (
+        root: string,
+        scope: "global" | "project",
+        skills: Record<string, Skill.Info>,
+        skillDirs: Set<string>,
+      ) => {
         return Glob.scan(EXTERNAL_SKILL_PATTERN, {
           cwd: root,
           absolute: true,
@@ -155,67 +161,21 @@ export class SkillService extends ServiceMap.Service<SkillService, SkillService.
           dot: true,
           symlink: true,
         })
-          .then((matches) => Promise.all(matches.map(addSkill)))
+          .then((matches) => Promise.all(matches.map((match) => addSkill(match, skills, skillDirs))))
           .catch((error) => {
             log.error(`failed to scan ${scope} skills`, { dir: root, error })
           })
       }
 
-      function ensureScanned() {
-        if (task) return task
-        task = (async () => {
-          // Scan external skill directories (.claude/skills/, .agents/skills/, etc.)
-          // Load global (home) first, then project-level (so project-level overwrites)
-          if (!Flag.OPENCODE_DISABLE_EXTERNAL_SKILLS) {
-            for (const dir of EXTERNAL_DIRS) {
-              const root = path.join(Global.Path.home, dir)
-              if (!(await Filesystem.isDir(root))) continue
-              await scanExternal(root, "global")
-            }
+      const remote = { task: undefined as Promise<{ skills: Record<string, Skill.Info>; skillDirs: Set<string> }> | undefined }
 
-            for await (const root of Filesystem.up({
-              targets: EXTERNAL_DIRS,
-              start: instance.directory,
-              stop: instance.project.worktree,
-            })) {
-              await scanExternal(root, "project")
-            }
-          }
-
-          // Scan .opencode/skill/ directories
-          for (const dir of await Config.directories()) {
-            const matches = await Glob.scan(OPENCODE_SKILL_PATTERN, {
-              cwd: dir,
-              absolute: true,
-              include: "file",
-              symlink: true,
-            })
-            for (const match of matches) {
-              await addSkill(match)
-            }
-          }
-
-          // Scan additional skill paths from config
+      function scanRemote() {
+        if (remote.task) return remote.task
+        remote.task = (async () => {
+          const skills: Record<string, Skill.Info> = {}
+          const skillDirs = new Set<string>()
           const config = await Config.get()
-          for (const skillPath of config.skills?.paths ?? []) {
-            const expanded = skillPath.startsWith("~/") ? path.join(os.homedir(), skillPath.slice(2)) : skillPath
-            const resolved = path.isAbsolute(expanded) ? expanded : path.join(instance.directory, expanded)
-            if (!(await Filesystem.isDir(resolved))) {
-              log.warn("skill path not found", { path: resolved })
-              continue
-            }
-            const matches = await Glob.scan(SKILL_PATTERN, {
-              cwd: resolved,
-              absolute: true,
-              include: "file",
-              symlink: true,
-            })
-            for (const match of matches) {
-              await addSkill(match)
-            }
-          }
 
-          // Download and load skills from URLs
           for (const url of config.skills?.urls ?? []) {
             const list = await Effect.runPromise(discovery.pull(url))
             for (const dir of list) {
@@ -227,35 +187,95 @@ export class SkillService extends ServiceMap.Service<SkillService, SkillService.
                 symlink: true,
               })
               for (const match of matches) {
-                await addSkill(match)
+                await addSkill(match, skills, skillDirs)
               }
             }
           }
 
-          log.info("init", { count: Object.keys(skills).length })
+          return { skills, skillDirs }
         })().catch((err) => {
-          task = undefined
+          remote.task = undefined
           throw err
         })
-        return task
+        return remote.task
+      }
+
+      async function scan() {
+        const base = await scanRemote()
+        const skills = { ...base.skills }
+        const skillDirs = new Set(base.skillDirs)
+        const config = await Config.get()
+
+        // Scan external skill directories (.claude/skills/, .agents/skills/, etc.)
+        // Load global (home) first, then project-level (so project-level overwrites)
+        if (!Flag.OPENCODE_DISABLE_EXTERNAL_SKILLS) {
+          for (const dir of EXTERNAL_DIRS) {
+            const root = path.join(Global.Path.home, dir)
+            if (!(await Filesystem.isDir(root))) continue
+            await scanExternal(root, "global", skills, skillDirs)
+          }
+
+          for await (const root of Filesystem.up({
+            targets: EXTERNAL_DIRS,
+            start: instance.directory,
+            stop: instance.project.worktree,
+          })) {
+            await scanExternal(root, "project", skills, skillDirs)
+          }
+        }
+
+        // Scan .opencode/skill/ directories
+        for (const dir of await ConfigPaths.directories(instance.directory, instance.project.worktree)) {
+          const matches = await Glob.scan(OPENCODE_SKILL_PATTERN, {
+            cwd: dir,
+            absolute: true,
+            include: "file",
+            symlink: true,
+          })
+          for (const match of matches) {
+            await addSkill(match, skills, skillDirs)
+          }
+        }
+
+        // Scan additional skill paths from config
+        for (const skillPath of config.skills?.paths ?? []) {
+          const expanded = skillPath.startsWith("~/") ? path.join(os.homedir(), skillPath.slice(2)) : skillPath
+          const resolved = path.isAbsolute(expanded) ? expanded : path.join(instance.directory, expanded)
+          if (!(await Filesystem.isDir(resolved))) {
+            log.warn("skill path not found", { path: resolved })
+            continue
+          }
+          const matches = await Glob.scan(SKILL_PATTERN, {
+            cwd: resolved,
+            absolute: true,
+            include: "file",
+            symlink: true,
+          })
+          for (const match of matches) {
+            await addSkill(match, skills, skillDirs)
+          }
+        }
+
+        log.info("init", { count: Object.keys(skills).length })
+        return { skills, skillDirs }
       }
 
       return SkillService.of({
         get: Effect.fn("SkillService.get")(function* (name: string) {
-          yield* Effect.promise(() => ensureScanned())
-          return skills[name]
+          const next = yield* Effect.promise(scan)
+          return next.skills[name]
         }),
         all: Effect.fn("SkillService.all")(function* () {
-          yield* Effect.promise(() => ensureScanned())
-          return Object.values(skills)
+          const next = yield* Effect.promise(scan)
+          return Object.values(next.skills)
         }),
         dirs: Effect.fn("SkillService.dirs")(function* () {
-          yield* Effect.promise(() => ensureScanned())
-          return Array.from(skillDirs)
+          const next = yield* Effect.promise(scan)
+          return Array.from(next.skillDirs)
         }),
         available: Effect.fn("SkillService.available")(function* (agent?: Agent.Info) {
-          yield* Effect.promise(() => ensureScanned())
-          const list = Object.values(skills)
+          const next = yield* Effect.promise(scan)
+          const list = Object.values(next.skills)
           if (!agent) return list
           return list.filter(
             (skill) => PermissionNext.evaluate("skill", skill.name, agent.permission).action !== "deny",

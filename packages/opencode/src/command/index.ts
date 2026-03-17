@@ -10,6 +10,18 @@ import { MCP } from "../mcp"
 import { Skill } from "../skill"
 
 export namespace Command {
+  function skill(skill: Skill.Info): Info {
+    return {
+      name: skill.name,
+      description: skill.description,
+      source: "skill",
+      get template() {
+        return skill.content
+      },
+      hints: [],
+    }
+  }
+
   export const Event = {
     Executed: BusEvent.define(
       "command.executed",
@@ -123,29 +135,22 @@ export namespace Command {
       }
     }
 
-    // Add skills as invokable commands
-    for (const skill of await Skill.all()) {
-      // Skip if a command with this name already exists
-      if (result[skill.name]) continue
-      result[skill.name] = {
-        name: skill.name,
-        description: skill.description,
-        source: "skill",
-        get template() {
-          return skill.content
-        },
-        hints: [],
-      }
-    }
-
     return result
   })
 
   export async function get(name: string) {
-    return state().then((x) => x[name])
+    const result = await state().then((x) => x[name])
+    if (result) return result
+    const loaded = await Skill.get(name)
+    if (!loaded) throw new Error(`Command "${name}" not found`)
+    return skill(loaded)
   }
 
   export async function list() {
-    return state().then((x) => Object.values(x))
+    const [base, skills] = await Promise.all([state(), Skill.all()])
+    return [
+      ...Object.values(base),
+      ...skills.filter((item) => !base[item.name]).map(skill),
+    ]
   }
 }

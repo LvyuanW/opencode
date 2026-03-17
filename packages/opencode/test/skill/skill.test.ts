@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test"
 import { Skill } from "../../src/skill"
+import { Command } from "../../src/command"
 import { Instance } from "../../src/project/instance"
 import { tmpdir } from "../fixture/fixture"
 import path from "path"
@@ -216,6 +217,37 @@ test("returns empty array when no skills exist", async () => {
     fn: async () => {
       const skills = await Skill.all()
       expect(skills).toEqual([])
+    },
+  })
+})
+
+test("refreshes local skills and command list after new skill files are added", async () => {
+  await using tmp = await tmpdir({ git: true })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      expect(await Skill.all()).toEqual([])
+      expect((await Command.list()).find((item) => item.name === "late-skill")).toBeUndefined()
+
+      const dir = path.join(tmp.path, ".opencode", "skills", "late-skill")
+      await fs.mkdir(dir, { recursive: true })
+      await Bun.write(
+        path.join(dir, "SKILL.md"),
+        `---
+name: late-skill
+description: Added after the first scan.
+---
+
+# Late Skill
+`,
+      )
+
+      const skills = await Skill.all()
+      expect(skills.find((item) => item.name === "late-skill")).toBeDefined()
+
+      const commands = await Command.list()
+      expect(commands.find((item) => item.name === "late-skill" && item.source === "skill")).toBeDefined()
     },
   })
 })
