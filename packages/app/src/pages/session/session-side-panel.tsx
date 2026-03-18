@@ -46,6 +46,7 @@ export function SessionSidePanel(props: {
   const isDesktop = createMediaQuery("(min-width: 768px)")
 
   const reviewKey = (code: string, prose: string) => (props.writer ? prose : code)
+  const fileKey = (code: string, prose: string) => (props.writer ? prose : code)
   const previewOpen = createMemo(() => {
     if (!isDesktop()) return false
     if (props.writer) return layout.fileTree.opened() || view().reviewPanel.opened()
@@ -176,6 +177,12 @@ export function SessionSidePanel(props: {
   }
 
   createEffect(() => {
+    if (!props.writer) return
+    if (!contextOpen()) return
+    tabs().close("context")
+  })
+
+  createEffect(() => {
     if (reviewTab()) return
     if (fileTreeTab() !== "changes") return
     layout.fileTree.setTab("all")
@@ -277,7 +284,7 @@ export function SessionSidePanel(props: {
                           </div>
                         </Tabs.Trigger>
                       </Show>
-                      <Show when={contextOpen()}>
+                      <Show when={!props.writer && contextOpen()}>
                         <Tabs.Trigger
                           value="context"
                           closeButton={
@@ -308,24 +315,26 @@ export function SessionSidePanel(props: {
                       <SortableProvider ids={openedTabs()}>
                         <For each={openedTabs()}>{(tab) => <SortableTab tab={tab} onTabClose={tabs().close} />}</For>
                       </SortableProvider>
-                      <div class="bg-background-stronger h-full shrink-0 sticky right-0 z-10 flex items-center justify-center pr-3">
-                        <TooltipKeybind
-                          title={language.t("command.file.open")}
-                          keybind={command.keybind("file.open")}
-                          class="flex items-center"
-                        >
-                          <IconButton
-                            icon="plus-small"
-                            variant="ghost"
-                            iconSize="large"
-                            class="!rounded-md"
-                            onClick={() =>
-                              dialog.show(() => <DialogSelectFile mode="files" onOpenFile={showAllFiles} />)
-                            }
-                            aria-label={language.t("command.file.open")}
-                          />
-                        </TooltipKeybind>
-                      </div>
+                      <Show when={!props.writer}>
+                        <div class="bg-background-stronger h-full shrink-0 sticky right-0 z-10 flex items-center justify-center pr-3">
+                          <TooltipKeybind
+                            title={language.t("command.file.open")}
+                            keybind={command.keybind("file.open")}
+                            class="flex items-center"
+                          >
+                            <IconButton
+                              icon="plus-small"
+                              variant="ghost"
+                              iconSize="large"
+                              class="!rounded-md"
+                              onClick={() =>
+                                dialog.show(() => <DialogSelectFile mode="files" onOpenFile={showAllFiles} />)
+                              }
+                              aria-label={language.t("command.file.open")}
+                            />
+                          </TooltipKeybind>
+                        </div>
+                      </Show>
                     </Tabs.List>
                   </div>
 
@@ -341,14 +350,14 @@ export function SessionSidePanel(props: {
                         <div class="h-full px-6 pb-42 -mt-4 flex flex-col items-center justify-center text-center gap-6">
                           <Mark class="w-14 opacity-10" />
                           <div class="text-14-regular text-text-weak max-w-56">
-                            {language.t("session.files.selectToOpen")}
+                            {language.t(fileKey("session.files.selectToOpen", "session.files.selectToOpen.writer"))}
                           </div>
                         </div>
                       </div>
                     </Show>
                   </Tabs.Content>
 
-                  <Show when={contextOpen()}>
+                  <Show when={!props.writer && contextOpen()}>
                     <Tabs.Content value="context" class="flex flex-col h-full overflow-hidden contain-strict">
                       <Show when={activeTab() === "context"}>
                         <div class="relative pt-2 flex-1 min-h-0 overflow-hidden">
@@ -413,7 +422,7 @@ export function SessionSidePanel(props: {
                     </Tabs.Trigger>
                   </Show>
                   <Tabs.Trigger value="all" class="flex-1" classes={{ button: "w-full" }}>
-                    {language.t("session.files.all")}
+                    {language.t(fileKey("session.files.all", "session.files.all.writer"))}
                   </Tabs.Trigger>
                 </Tabs.List>
                 <Show when={reviewTab()}>
@@ -448,7 +457,9 @@ export function SessionSidePanel(props: {
                 </Show>
                 <Tabs.Content value="all" class="bg-background-stronger px-3 py-0">
                   <Switch>
-                    <Match when={nofiles()}>{empty(language.t("session.files.empty"))}</Match>
+                    <Match when={nofiles()}>
+                      {empty(language.t(fileKey("session.files.empty", "session.files.empty.writer")))}
+                    </Match>
                     <Match when={true}>
                       <FileTree
                         path=""

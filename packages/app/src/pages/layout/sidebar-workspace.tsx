@@ -16,6 +16,7 @@ import { type Session } from "@opencode-ai/sdk/v2/client"
 import { type LocalProject } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
+import { useSettings } from "@/context/settings"
 import { NewSessionItem, SessionItem, SessionSkeleton } from "./sidebar-items"
 import { childMapByParent, sortedRootSessions } from "./helpers"
 
@@ -63,6 +64,9 @@ export const WorkspaceDragOverlay = (props: {
 }): JSX.Element => {
   const globalSync = useGlobalSync()
   const language = useLanguage()
+  const settings = useSettings()
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
+  const pick = (code: string, prose: string) => (writer() ? prose : code)
   const label = createMemo(() => {
     const project = props.sidebarProject()
     if (!project) return
@@ -71,7 +75,9 @@ export const WorkspaceDragOverlay = (props: {
 
     const [workspaceStore] = globalSync.child(directory, { bootstrap: false })
     const kind =
-      directory === project.worktree ? language.t("workspace.type.local") : language.t("workspace.type.sandbox")
+      directory === project.worktree
+        ? language.t(pick("workspace.type.local", "workspace.type.local.writer"))
+        : language.t(pick("workspace.type.sandbox", "workspace.type.sandbox.writer"))
     const name = props.workspaceLabel(directory, workspaceStore.vcs?.branch, project.id)
     return `${kind} : ${name}`
   })
@@ -96,45 +102,54 @@ const WorkspaceHeader = (props: {
   renameWorkspace: WorkspaceSidebarContext["renameWorkspace"]
   setEditor: WorkspaceSidebarContext["setEditor"]
   projectId?: string
-}): JSX.Element => (
-  <div class="flex items-center gap-1 min-w-0 flex-1">
-    <div class="flex items-center justify-center shrink-0 size-6">
-      <Show when={props.busy()} fallback={<Icon name="branch" size="small" />}>
-        <Spinner class="size-[15px]" />
+}): JSX.Element => {
+  const settings = useSettings()
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
+  const pick = (code: string, prose: string) => (writer() ? prose : code)
+
+  return (
+    <div class="flex items-center gap-1 min-w-0 flex-1">
+      <div class="flex items-center justify-center shrink-0 size-6">
+        <Show when={props.busy()} fallback={<Icon name="branch" size="small" />}>
+          <Spinner class="size-[15px]" />
+        </Show>
+      </div>
+      <span class="text-14-medium text-text-base shrink-0">
+        {props.local()
+          ? props.language.t(pick("workspace.type.local", "workspace.type.local.writer"))
+          : props.language.t(pick("workspace.type.sandbox", "workspace.type.sandbox.writer"))}{" "}
+        :
+      </span>
+      <Show
+        when={!props.local()}
+        fallback={
+          <span class="text-14-medium text-text-base min-w-0 truncate">
+            {props.branch() ?? getFilename(props.directory)}
+          </span>
+        }
+      >
+        <props.InlineEditor
+          id={`workspace:${props.directory}`}
+          value={props.workspaceValue}
+          onSave={(next) => {
+            const trimmed = next.trim()
+            if (!trimmed) return
+            props.renameWorkspace(props.directory, trimmed, props.projectId, props.branch())
+            props.setEditor("value", props.workspaceValue())
+          }}
+          class="text-14-medium text-text-base min-w-0 truncate"
+          displayClass="text-14-medium text-text-base min-w-0 truncate"
+          editing={props.workspaceEditActive()}
+          stopPropagation={false}
+          openOnDblClick={false}
+        />
       </Show>
+      <div class="flex items-center justify-center shrink-0 overflow-hidden w-0 opacity-0 transition-all duration-200 group-hover/workspace:w-3.5 group-hover/workspace:opacity-100 group-focus-within/workspace:w-3.5 group-focus-within/workspace:opacity-100">
+        <Icon name={props.open() ? "chevron-down" : "chevron-right"} size="small" class="text-icon-base" />
+      </div>
     </div>
-    <span class="text-14-medium text-text-base shrink-0">
-      {props.local() ? props.language.t("workspace.type.local") : props.language.t("workspace.type.sandbox")} :
-    </span>
-    <Show
-      when={!props.local()}
-      fallback={
-        <span class="text-14-medium text-text-base min-w-0 truncate">
-          {props.branch() ?? getFilename(props.directory)}
-        </span>
-      }
-    >
-      <props.InlineEditor
-        id={`workspace:${props.directory}`}
-        value={props.workspaceValue}
-        onSave={(next) => {
-          const trimmed = next.trim()
-          if (!trimmed) return
-          props.renameWorkspace(props.directory, trimmed, props.projectId, props.branch())
-          props.setEditor("value", props.workspaceValue())
-        }}
-        class="text-14-medium text-text-base min-w-0 truncate"
-        displayClass="text-14-medium text-text-base min-w-0 truncate"
-        editing={props.workspaceEditActive()}
-        stopPropagation={false}
-        openOnDblClick={false}
-      />
-    </Show>
-    <div class="flex items-center justify-center shrink-0 overflow-hidden w-0 opacity-0 transition-all duration-200 group-hover/workspace:w-3.5 group-hover/workspace:opacity-100 group-focus-within/workspace:w-3.5 group-focus-within/workspace:opacity-100">
-      <Icon name={props.open() ? "chevron-down" : "chevron-right"} size="small" class="text-icon-base" />
-    </div>
-  </div>
-)
+  )
+}
 
 const WorkspaceActions = (props: {
   directory: string

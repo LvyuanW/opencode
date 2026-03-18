@@ -584,11 +584,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     })
   }
 
-  const agentList = createMemo(() =>
-    sync.data.agent
+  const agentList = createMemo(() => {
+    if (writer()) return []
+    return sync.data.agent
       .filter((agent) => !agent.hidden && agent.mode !== "primary")
-      .map((agent): AtOption => ({ type: "agent", name: agent.name, display: agent.name })),
-  )
+      .map((agent): AtOption => ({ type: "agent", name: agent.name, display: agent.name }))
+  })
   const agentNames = createMemo(() => local.agent.list().map((agent) => agent.name))
 
   const handleAtSelect = (option: AtOption | undefined) => {
@@ -642,6 +643,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   const slashCommands = createMemo<SlashCommand[]>(() => {
+    const custom = sync.data.command.map((cmd) => ({
+      id: `custom.${cmd.name}`,
+      trigger: cmd.name,
+      title: cmd.name,
+      description: cmd.description,
+      type: "custom" as const,
+      source: cmd.source,
+    }))
+
+    if (writer()) return custom
+
     const builtin = command.options
       .filter((opt) => !opt.disabled && !opt.id.startsWith("suggested.") && opt.slash)
       .map((opt) => ({
@@ -652,15 +664,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         keybind: opt.keybind,
         type: "builtin" as const,
       }))
-
-    const custom = sync.data.command.map((cmd) => ({
-      id: `custom.${cmd.name}`,
-      trigger: cmd.name,
-      title: cmd.name,
-      description: cmd.description,
-      type: "custom" as const,
-      source: cmd.source,
-    }))
 
     return [...custom, ...builtin]
   })
@@ -1471,7 +1474,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           </div>
         </div>
       </DockShellForm>
-      <Show when={store.mode === "normal" || store.mode === "shell"}>
+      <Show when={!writer() && (store.mode === "normal" || store.mode === "shell")}>
         <DockTray attach="top">
           <div class="px-1.75 pt-5.5 pb-2 flex items-center gap-2 min-w-0">
             <div class="flex items-center gap-1.5 min-w-0 flex-1 relative">

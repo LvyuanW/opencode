@@ -309,15 +309,16 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
               onSelect: () => view().terminal.toggle(),
             }),
           ]),
-      viewCommand({
-        id: "review.toggle",
-        title: language.t(writer() ? "command.review.toggle.writer" : "command.review.toggle"),
-        keybind: "mod+shift+r",
-        onSelect: () => {
-          if (writer()) layout.fileTree.open()
-          view().reviewPanel.toggle()
-        },
-      }),
+      ...(writer()
+        ? []
+        : [
+            viewCommand({
+              id: "review.toggle",
+              title: language.t("command.review.toggle"),
+              keybind: "mod+shift+r",
+              onSelect: () => view().reviewPanel.toggle(),
+            }),
+          ]),
       viewCommand({
         id: "fileTree.toggle",
         title: language.t("command.fileTree.toggle"),

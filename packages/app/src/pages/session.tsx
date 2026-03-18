@@ -1147,9 +1147,7 @@ export default function Page() {
     const id = params.id
     if (!id) return
 
-    const wants = isDesktop()
-      ? !writer() && (desktopReviewOpen() || (desktopFileTreeOpen() && fileTreeTab() === "changes"))
-      : mobileChanges()
+    const wants = isDesktop() ? desktopReviewOpen() || (desktopFileTreeOpen() && fileTreeTab() === "changes") : mobileChanges()
     if (!wants) return
     if (sync.data.session_diff[id] !== undefined) return
     if (sync.status === "loading") return
@@ -1162,9 +1160,7 @@ export default function Page() {
       () =>
         [
           sessionKey(),
-          isDesktop()
-            ? !writer() && (desktopReviewOpen() || (desktopFileTreeOpen() && fileTreeTab() === "changes"))
-            : mobileChanges(),
+          isDesktop() ? desktopReviewOpen() || (desktopFileTreeOpen() && fileTreeTab() === "changes") : mobileChanges(),
         ] as const,
       ([key, wants]) => {
         if (diffFrame !== undefined) cancelAnimationFrame(diffFrame)

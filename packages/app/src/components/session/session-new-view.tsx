@@ -62,18 +62,31 @@ export function NewSessionView(props: NewSessionViewProps) {
             </div>
           </div>
           <div class="w-full flex flex-col gap-4 items-center">
-            <div class="flex items-start justify-center gap-3 min-h-5">
-              <div class="text-12-medium text-text-weak select-text leading-5 min-w-0 max-w-160 break-words text-center">
-                {getDirectory(projectRoot())}
-                <span class="text-text-strong">{getFilename(projectRoot())}</span>
+            <Show
+              when={writer()}
+              fallback={
+                <>
+                  <div class="flex items-start justify-center gap-3 min-h-5">
+                    <div class="text-12-medium text-text-weak select-text leading-5 min-w-0 max-w-160 break-words text-center">
+                      {getDirectory(projectRoot())}
+                      <span class="text-text-strong">{getFilename(projectRoot())}</span>
+                    </div>
+                  </div>
+                  <div class="flex items-start justify-center gap-1.5 min-h-5">
+                    <Icon name="branch" size="small" class="mt-0.5 shrink-0" />
+                    <div class="text-12-medium text-text-weak select-text leading-5 min-w-0 max-w-160 break-words text-center">
+                      {label(current())}
+                    </div>
+                  </div>
+                </>
+              }
+            >
+              <div class="flex items-start justify-center gap-3 min-h-5">
+                <div class="text-12-medium text-text-weak leading-5 min-w-0 max-w-160 break-words text-center">
+                  <span class="text-text-strong">{getFilename(projectRoot())}</span>
+                </div>
               </div>
-            </div>
-            <div class="flex items-start justify-center gap-1.5 min-h-5">
-              <Icon name="branch" size="small" class="mt-0.5 shrink-0" />
-              <div class="text-12-medium text-text-weak select-text leading-5 min-w-0 max-w-160 break-words text-center">
-                {label(current())}
-              </div>
-            </div>
+            </Show>
             <Show when={sync.project}>
               {(project) => (
                 <div class="flex items-start justify-center gap-3 min-h-5">

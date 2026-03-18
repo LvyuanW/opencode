@@ -117,6 +117,7 @@ export default function Layout(props: ParentProps) {
   const layoutReady = createMemo(() => layout.ready())
   const platform = usePlatform()
   const settings = useSettings()
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
   const server = useServer()
   const notification = useNotification()
   const permission = usePermission()
@@ -127,6 +128,7 @@ export default function Layout(props: ParentProps) {
   const command = useCommand()
   const theme = useTheme()
   const language = useLanguage()
+  const pick = (code: string, prose: string) => (writer() ? prose : code)
   const initialDirectory = decode64(params.dir)
   const availableThemeEntries = createMemo(() => Object.entries(theme.themes()))
   const colorSchemeOrder: ColorScheme[] = ["system", "light", "dark"]
@@ -137,7 +139,6 @@ export default function Layout(props: ParentProps) {
   }
   const colorSchemeLabel = (scheme: ColorScheme) => language.t(colorSchemeKey[scheme])
   const currentDir = createMemo(() => decode64(params.dir) ?? "")
-
   const [state, setState] = createStore({
     autoselect: !initialDirectory,
     busyWorkspaces: {} as Record<string, boolean>,
@@ -2081,8 +2082,8 @@ export default function Layout(props: ParentProps) {
                       >
                         <DropdownMenu.ItemLabel>
                           {workspacesEnabled()
-                            ? language.t("sidebar.workspaces.disable")
-                            : language.t("sidebar.workspaces.enable")}
+                            ? language.t(pick("sidebar.workspaces.disable", "sidebar.workspaces.disable.writer"))
+                            : language.t(pick("sidebar.workspaces.enable", "sidebar.workspaces.enable.writer"))}
                         </DropdownMenu.ItemLabel>
                       </DropdownMenu.Item>
                       <DropdownMenu.Item

@@ -14,6 +14,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useLayout } from "@/context/layout"
 import { useFile } from "@/context/file"
 import { useLanguage } from "@/context/language"
+import { useSettings } from "@/context/settings"
 import { useSessionLayout } from "@/pages/session/session-layout"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { decode64 } from "@/utils/base64"
@@ -263,6 +264,7 @@ function createSessionEntries(props: {
 export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFile?: (path: string) => void }) {
   const command = useCommand()
   const language = useLanguage()
+  const settings = useSettings()
   const layout = useLayout()
   const file = useFile()
   const dialog = useDialog()
@@ -292,12 +294,14 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
     return dirs
   })
   const homedir = createMemo(() => globalSync.data.path.home)
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
+  const pick = (code: string, prose: string) => (writer() ? prose : code)
   const label = (directory: string) => {
     const current = project()
     const kind =
       current && directory === current.worktree
-        ? language.t("workspace.type.local")
-        : language.t("workspace.type.sandbox")
+        ? language.t(pick("workspace.type.local", "workspace.type.local.writer"))
+        : language.t(pick("workspace.type.sandbox", "workspace.type.sandbox.writer"))
     const [store] = globalSync.child(directory, { bootstrap: false })
     const home = homedir()
     const path = home ? directory.replace(home, "~") : directory

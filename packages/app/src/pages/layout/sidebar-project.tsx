@@ -10,6 +10,7 @@ import { useLayout, type LocalProject } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { useNotification } from "@/context/notification"
+import { useSettings } from "@/context/settings"
 import { ProjectIcon, SessionItem, type SessionItemProps } from "./sidebar-items"
 import { childMapByParent, displayName, sortedRootSessions } from "./helpers"
 
@@ -75,6 +76,9 @@ const ProjectTile = (props: {
 }): JSX.Element => {
   const notification = useNotification()
   const layout = useLayout()
+  const settings = useSettings()
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
+  const pick = (code: string, prose: string) => (writer() ? prose : code)
   const unseenCount = createMemo(() =>
     props.dirs().reduce((total, directory) => total + notification.project.unseenCount(directory), 0),
   )
@@ -154,8 +158,8 @@ const ProjectTile = (props: {
           >
             <ContextMenu.ItemLabel>
               {props.workspacesEnabled(props.project)
-                ? props.language.t("sidebar.workspaces.disable")
-                : props.language.t("sidebar.workspaces.enable")}
+                ? props.language.t(pick("sidebar.workspaces.disable", "sidebar.workspaces.disable.writer"))
+                : props.language.t(pick("sidebar.workspaces.enable", "sidebar.workspaces.enable.writer"))}
             </ContextMenu.ItemLabel>
           </ContextMenu.Item>
           <ContextMenu.Item
@@ -277,6 +281,9 @@ export const SortableProject = (props: {
 }): JSX.Element => {
   const globalSync = useGlobalSync()
   const language = useLanguage()
+  const settings = useSettings()
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
+  const pick = (code: string, prose: string) => (writer() ? prose : code)
   const sortable = createSortable(props.project.worktree)
   const selected = createMemo(
     () =>
@@ -313,7 +320,9 @@ export const SortableProject = (props: {
   const label = (directory: string) => {
     const [data] = globalSync.child(directory, { bootstrap: false })
     const kind =
-      directory === props.project.worktree ? language.t("workspace.type.local") : language.t("workspace.type.sandbox")
+      directory === props.project.worktree
+        ? language.t(pick("workspace.type.local", "workspace.type.local.writer"))
+        : language.t(pick("workspace.type.sandbox", "workspace.type.sandbox.writer"))
     const name = props.ctx.workspaceLabel(directory, data.vcs?.branch, props.project.id)
     return `${kind} : ${name}`
   }
