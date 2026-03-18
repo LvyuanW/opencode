@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onMount, Show, splitProps, type JSX } from "solid-js"
+import { createEffect, createSignal, onCleanup, onMount, Show, splitProps, type JSX } from "solid-js"
 import { Button } from "./button"
 import { Icon } from "./icon"
 import { installLineCommentStyles } from "./line-comment-styles"
@@ -45,13 +45,79 @@ export type LineCommentAnchorProps = {
 }
 
 export const LineCommentAnchor = (props: LineCommentAnchorProps) => {
+  let el: HTMLDivElement | undefined
   const hidden = () => !props.inline && props.top === undefined
   const variant = () => props.variant ?? "default"
   const icon = () => props.icon ?? "comment"
   const inlineBody = () => props.inline && props.hideButton
 
+  onMount(() => {
+    if (!props.inline || !el) return
+
+    let box: HTMLElement | undefined
+    let obs: ResizeObserver | undefined
+    let frame: number | undefined
+
+    const clear = () => {
+      if (!box) return
+      box.removeEventListener("scroll", sync)
+      box = undefined
+    }
+
+    const find = () => {
+      if (!el) return
+      const root = el.getRootNode()
+      const next =
+        el.closest("diffs-container") ??
+        el.closest("[data-code]") ??
+        (root instanceof ShadowRoot ? root.querySelector("[data-code]") : undefined)
+      if (!(next instanceof HTMLElement)) return
+      if (box === next) return next
+      clear()
+      obs?.disconnect()
+      box = next
+      obs = new ResizeObserver(sync)
+      obs.observe(next)
+      obs.observe(el)
+      next.addEventListener("scroll", sync, { passive: true })
+      return next
+    }
+
+    const sync = () => {
+      const next = find()
+      if (!next || !el) return false
+      const a = el.getBoundingClientRect()
+      const b = next.getBoundingClientRect()
+      const w = Math.floor((b.right - a.left - 8) * 100) / 100
+      if (!Number.isFinite(w) || w <= 0) {
+        el.style.removeProperty("--line-comment-inline-max-width")
+        return false
+      }
+      el.style.setProperty("--line-comment-inline-max-width", `${w}px`)
+      return true
+    }
+
+    window.addEventListener("resize", sync)
+
+    const tick = () => {
+      frame = undefined
+      if (sync()) return
+      frame = requestAnimationFrame(tick)
+    }
+
+    frame = requestAnimationFrame(tick)
+
+    onCleanup(() => {
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      clear()
+      obs?.disconnect()
+      window.removeEventListener("resize", sync)
+    })
+  })
+
   return (
     <div
+      ref={el}
       data-component="line-comment"
       data-prevent-autofocus=""
       data-variant={variant()}

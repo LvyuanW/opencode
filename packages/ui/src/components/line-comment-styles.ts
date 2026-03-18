@@ -77,9 +77,10 @@ export const lineCommentStyles = `
   top: auto;
   right: auto;
   margin-left: 8px;
+  margin-right: 8px;
   flex: 1 1 0%;
   width: auto;
-  max-width: 100%;
+  max-width: var(--line-comment-inline-max-width, calc(100% - 8px));
   min-width: 0;
 }
 
@@ -99,7 +100,9 @@ export const lineCommentStyles = `
 }
 
 [data-component="line-comment"][data-inline][data-variant="editor"] [data-slot="line-comment-popover"] {
-  width: 100%;
+  flex: 0 1 380px;
+  width: min(380px, var(--line-comment-inline-max-width, calc(100% - 8px)));
+  max-width: var(--line-comment-inline-max-width, calc(100% - 8px));
 }
 
 [data-component="line-comment"] [data-slot="line-comment-content"] {
