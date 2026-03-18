@@ -259,6 +259,75 @@ describe("buildRequestParts", () => {
     }
   })
 
+  test("adds visible metadata for locked selection targets", () => {
+    const result = buildRequestParts({
+      prompt: [],
+      context: [
+        {
+          key: "ctx:target",
+          type: "file",
+          path: "drafts/scene.md",
+          selection: { startLine: 3, startChar: 2, endLine: 4, endChar: 8 },
+          quote: "Hello there",
+          preview: "Hello there",
+          target: true,
+        },
+      ],
+      images: [],
+      text: "Rewrite this",
+      messageID: "msg_target",
+      sessionID: "ses_target",
+      sessionDirectory: "/repo",
+    })
+
+    const note = result.requestParts.find(
+      (part) => part.type === "text" && part.synthetic && part.metadata?.opencodeSelection,
+    )
+
+    expect(note).toBeDefined()
+    if (note?.type === "text") {
+      expect((note.metadata?.opencodeSelection as { path?: string }).path).toBe("drafts/scene.md")
+      expect((note.metadata?.opencodeSelection as { quote?: string }).quote).toBe("Hello there")
+    }
+  })
+
+  test("adds a summary note for multiple locked selection targets", () => {
+    const result = buildRequestParts({
+      prompt: [],
+      context: [
+        {
+          key: "ctx:target:a",
+          type: "file",
+          path: "drafts/scene.md",
+          selection: { startLine: 3, startChar: 2, endLine: 4, endChar: 8 },
+          quote: "Hello there",
+          preview: "Hello there",
+          target: true,
+        },
+        {
+          key: "ctx:target:b",
+          type: "file",
+          path: "drafts/scene.md",
+          selection: { startLine: 8, startChar: 0, endLine: 8, endChar: 12 },
+          quote: "General Kenobi",
+          preview: "General Kenobi",
+          target: true,
+        },
+      ],
+      images: [],
+      text: "Rewrite these",
+      messageID: "msg_target_multi",
+      sessionID: "ses_target_multi",
+      sessionDirectory: "/repo",
+    })
+
+    const notes = result.requestParts.filter(
+      (part): part is Extract<(typeof result.requestParts)[number], { type: "text" }> => part.type === "text" && !!part.synthetic,
+    )
+    expect(notes.some((part) => part.text.includes("locked 2 exact passages"))).toBe(true)
+    expect(notes.filter((part) => part.metadata?.opencodeSelection).length).toBe(2)
+  })
+
   test("handles file paths with dots and special segments on Windows", () => {
     const prompt: Prompt = [
       { type: "file", path: "..\\..\\shared\\util.ts", content: "@..\\..\\shared\\util.ts", start: 0, end: 21 },

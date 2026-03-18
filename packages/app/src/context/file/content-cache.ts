@@ -12,7 +12,7 @@ export function approxBytes(content: FileContent) {
       return sum + hunk.lines.reduce((lineSum, line) => lineSum + line.length, 0)
     }, 0) ?? 0
 
-  return (content.content.length + (content.diff?.length ?? 0) + patchBytes) * 2
+  return ((typeof content.content === "string" ? content.content.length : 0) + (content.diff?.length ?? 0) + patchBytes) * 2
 }
 
 function setBytes(path: string, nextBytes: number) {

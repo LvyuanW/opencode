@@ -5,6 +5,7 @@ import { encodeFilePath } from "@/context/file/path"
 import type { AgentPart, FileAttachmentPart, ImageAttachmentPart, Prompt } from "@/context/prompt"
 import { Identifier } from "@/utils/id"
 import { createCommentMetadata, formatCommentNote } from "@/utils/comment-note"
+import { createSelectionMetadata, formatSelectionNote } from "@/utils/selection-note"
 
 type PromptRequestPart = (TextPartInput | FilePartInput | AgentPartInput) & { id: string }
 
@@ -17,6 +18,8 @@ type ContextFile = {
   commentID?: string
   commentOrigin?: "review" | "file"
   preview?: string
+  quote?: string
+  target?: boolean
 }
 
 type BuildRequestPartsInput = {
@@ -37,7 +40,19 @@ const absolute = (directory: string, path: string) => {
 }
 
 const fileQuery = (selection: FileSelection | undefined) =>
-  selection ? `?start=${selection.startLine}&end=${selection.endLine}` : ""
+  selection
+    ? `?start=${selection.startLine}&end=${selection.endLine}&start_char=${selection.startChar}&end_char=${selection.endChar}`
+    : ""
+
+const selectionNote = (item: ContextFile) => {
+  const quote = item.quote?.trim()
+  if (!item.target || !quote) return
+  return formatSelectionNote({
+    path: item.path,
+    selection: item.selection,
+    quote,
+  })
+}
 
 const isFileAttachment = (part: Prompt[number]): part is FileAttachmentPart => part.type === "file"
 const isAgentAttachment = (part: Prompt[number]): part is AgentPart => part.type === "agent"
@@ -86,6 +101,7 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
       text: input.text,
     },
   ]
+  const picks = input.context.filter((item) => item.target && item.quote?.trim())
 
   const files = input.prompt.filter(isFileAttachment).map((attachment) => {
     const path = absolute(input.sessionDirectory, attachment.path)
@@ -121,11 +137,12 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
   })
 
   const used = new Set(files.map((part) => part.url))
-  const context = input.context.flatMap((item) => {
+  const context: PromptRequestPart[] = input.context.flatMap((item): PromptRequestPart[] => {
     const path = absolute(input.sessionDirectory, item.path)
     const url = `file://${encodeFilePath(path)}${fileQuery(item.selection)}`
     const comment = item.comment?.trim()
-    if (!comment && used.has(url)) return []
+    const quote = selectionNote(item)
+    if (!comment && !quote && used.has(url)) return []
     used.add(url)
 
     const filePart = {
@@ -135,6 +152,26 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
       url,
       filename: getFilename(item.path),
     } satisfies PromptRequestPart
+
+    if (!comment && !quote) return [filePart]
+
+    if (!comment && quote) {
+      return [
+        {
+          id: Identifier.ascending("part"),
+          type: "text",
+          text: quote,
+          synthetic: true,
+          metadata: createSelectionMetadata({
+            path: item.path,
+            selection: item.selection,
+            quote: item.quote ?? quote,
+            preview: item.preview,
+          }),
+        } satisfies PromptRequestPart,
+        filePart,
+      ]
+    }
 
     if (!comment) return [filePart]
 
@@ -165,6 +202,19 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
       filename: attachment.filename,
     } satisfies PromptRequestPart
   })
+
+  if (picks.length > 1) {
+    requestParts.push({
+      id: Identifier.ascending("part"),
+      type: "text",
+      text: [
+        `The user locked ${picks.length} exact passages as edit targets in this request.`,
+        `Treat each quoted <selection> block below as part of the edit target.`,
+        `If they ask for a rewrite or revision, update only those locked passages unless they explicitly expand the scope.`,
+      ].join("\n"),
+      synthetic: true,
+    })
+  }
 
   requestParts.push(...files, ...context, ...agents, ...images)
 

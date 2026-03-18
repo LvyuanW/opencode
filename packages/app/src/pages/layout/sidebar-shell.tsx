@@ -47,7 +47,7 @@ export const SidebarContent = (props: {
   })
 
   return (
-    <div class="flex h-full w-full min-w-0 overflow-hidden">
+    <div data-component="sidebar-shell" class="flex h-full w-full min-w-0 overflow-hidden">
       <div
         data-component="sidebar-rail"
         class="w-16 shrink-0 bg-background-base flex flex-col items-center overflow-hidden"
@@ -112,6 +112,7 @@ export const SidebarContent = (props: {
       </div>
 
       <div
+        data-component="sidebar-panel"
         ref={(el) => {
           panel = el
         }}

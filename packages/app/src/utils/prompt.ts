@@ -29,12 +29,14 @@ function selectionFromFileUrl(url: string): Extract<Inline, { type: "file" }>["s
   const params = new URLSearchParams(url.slice(queryIndex + 1))
   const startLine = Number(params.get("start"))
   const endLine = Number(params.get("end"))
+  const startChar = Number(params.get("start_char") ?? 0)
+  const endChar = Number(params.get("end_char") ?? 0)
   if (!Number.isFinite(startLine) || !Number.isFinite(endLine)) return undefined
   return {
     startLine,
     endLine,
-    startChar: 0,
-    endChar: 0,
+    startChar: Number.isFinite(startChar) ? startChar : 0,
+    endChar: Number.isFinite(endChar) ? endChar : 0,
   }
 }
 

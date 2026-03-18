@@ -322,6 +322,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (store.mode !== "shell") return items
     return items.filter((item) => !item.comment?.trim())
   })
+  const notes = createMemo(() => contextItems().filter((item) => !!item.comment?.trim()))
+  const ctx = createMemo(() => {
+    if (!writer()) return contextItems()
+    return contextItems().filter((item) => !item.comment?.trim())
+  })
 
   const hasUserPrompt = createMemo(() => {
     const sessionID = params.id
@@ -1056,6 +1061,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             commentID: item.commentID,
             commentOrigin: item.commentOrigin,
             preview: item.preview,
+            quote: item.quote,
+            target: item.target,
+            armed: item.armed,
           })
         }
 
@@ -1294,7 +1302,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   return (
-    <div class="relative size-full _max-h-[320px] flex flex-col gap-0">
+    <div
+      data-component="prompt-composer"
+      data-writer-mode={writer() ? "true" : "false"}
+      class="relative size-full _max-h-[320px] flex flex-col gap-0"
+    >
       <PromptPopover
         popover={store.popover}
         setSlashPopoverRef={(el) => (slashPopoverRef = el)}
@@ -1311,6 +1323,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         t={(key) => language.t(key as Parameters<typeof language.t>[0])}
       />
       <DockShellForm
+        data-writer-mode={writer() ? "true" : "false"}
         onSubmit={handleSubmit}
         classList={{
           "group/prompt-input": true,
@@ -1323,8 +1336,32 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           type={store.draggingType}
           label={language.t(store.draggingType === "@mention" ? "prompt.dropzone.file.label" : "prompt.dropzone.label")}
         />
+        <Show when={writer() && notes().length > 0}>
+          <div data-component="prompt-comment-strip">
+            <div class="px-3 pt-3 text-11-medium uppercase tracking-[0.08em] text-text-weak">
+              {language.t(
+                notes().length === 1 ? "prompt.context.pending.one" : "prompt.context.pending.other",
+                { count: notes().length },
+              )}
+            </div>
+            <PromptContextItems
+              items={notes()}
+              kind="comment"
+              active={(item) => {
+                const active = comments.active()
+                return !!item.commentID && item.commentID === active?.id && item.path === active?.file
+              }}
+              openComment={openComment}
+              remove={(item) => {
+                if (item.commentID) comments.remove(item.path, item.commentID)
+                prompt.context.remove(item.key)
+              }}
+              t={(key) => language.t(key as Parameters<typeof language.t>[0])}
+            />
+          </div>
+        </Show>
         <PromptContextItems
-          items={contextItems()}
+          items={ctx()}
           active={(item) => {
             const active = comments.active()
             return !!item.commentID && item.commentID === active?.id && item.path === active?.file
@@ -1394,6 +1431,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             />
             <Show when={!prompt.dirty()}>
               <div
+                data-component="prompt-placeholder"
                 class="absolute top-0 inset-x-0 pl-3 pr-2 pt-2 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate"
                 classList={{ "font-mono!": store.mode === "shell" }}
                 style={{ "padding-bottom": space }}

@@ -245,6 +245,8 @@ export function SessionSidePanel(props: {
   return (
     <Show when={isDesktop()}>
       <aside
+        data-component="session-side-panel"
+        data-writer-mode={props.writer ? "true" : "false"}
         id="review-panel"
         aria-label={language.t(reviewKey("session.panel.reviewAndFiles", "session.panel.revisionAndFiles"))}
         aria-hidden={!open()}

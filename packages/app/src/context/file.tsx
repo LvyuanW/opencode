@@ -194,6 +194,35 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       return promise
     }
 
+    const write = (input: string, content: string) => {
+      const file = path.normalize(input)
+      if (!file) return Promise.resolve()
+
+      ensure(file)
+
+      return sdk.client.file
+        .write({ fileWriteInput: { path: file, content } })
+        .then((x) => {
+          const next =
+            x.data && typeof x.data === "object" && "content" in x.data && typeof x.data.content === "string"
+              ? x.data
+              : { type: "text" as const, content }
+          setLoaded(file, next)
+          touchFileContent(file, approxBytes(next))
+          evictContent(new Set([file]))
+          return next
+        })
+        .catch((e) => {
+          const message = errorMessage(e, language.t("error.chain.unknown"))
+          showToast({
+            variant: "error",
+            title: language.t("toast.file.saveFailed.title"),
+            description: message,
+          })
+          throw e
+        })
+    }
+
     const search = (query: string, dirs: "true" | "false") =>
       sdk.client.find.files({ query, dirs }).then(
         (x) => (x.data ?? []).map(path.normalize),
@@ -267,6 +296,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       },
       get,
       load,
+      write,
       scrollTop,
       scrollLeft,
       setScrollTop,

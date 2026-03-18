@@ -169,6 +169,21 @@ export type EventVcsBranchUpdated = {
   }
 }
 
+export type EventLspClientDiagnostics = {
+  type: "lsp.client.diagnostics"
+  properties: {
+    serverID: string
+    path: string
+  }
+}
+
+export type EventLspUpdated = {
+  type: "lsp.updated"
+  properties: {
+    [key: string]: unknown
+  }
+}
+
 export type EventFileEdited = {
   type: "file.edited"
   properties: {
@@ -185,21 +200,6 @@ export type EventServerConnected = {
 
 export type EventGlobalDisposed = {
   type: "global.disposed"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventLspClientDiagnostics = {
-  type: "lsp.client.diagnostics"
-  properties: {
-    serverID: string
-    path: string
-  }
-}
-
-export type EventLspUpdated = {
-  type: "lsp.updated"
   properties: {
     [key: string]: unknown
   }
@@ -969,11 +969,11 @@ export type Event =
   | EventPermissionReplied
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
+  | EventLspClientDiagnostics
+  | EventLspUpdated
   | EventFileEdited
   | EventServerConnected
   | EventGlobalDisposed
-  | EventLspClientDiagnostics
-  | EventLspUpdated
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
@@ -1814,6 +1814,11 @@ export type FileContent = {
   }
   encoding?: "base64"
   mimeType?: string
+}
+
+export type FileWriteInput = {
+  path: string
+  content: string
 }
 
 export type File = {
@@ -4175,6 +4180,25 @@ export type FileReadResponses = {
 }
 
 export type FileReadResponse = FileReadResponses[keyof FileReadResponses]
+
+export type FileWriteData = {
+  body?: FileWriteInput
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/file/content"
+}
+
+export type FileWriteResponses = {
+  /**
+   * Updated file content
+   */
+  200: FileContent
+}
+
+export type FileWriteResponse = FileWriteResponses[keyof FileWriteResponses]
 
 export type FileStatusData = {
   body?: never

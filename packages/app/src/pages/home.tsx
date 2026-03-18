@@ -1,4 +1,4 @@
-import { createMemo, For, Match, Switch } from "solid-js"
+import { createMemo, For, Match, Show, Switch } from "solid-js"
 import { Button } from "@opencode-ai/ui/button"
 import { Logo } from "@opencode-ai/ui/logo"
 import { useLayout } from "@/context/layout"
@@ -65,32 +65,54 @@ export default function Home() {
   }
 
   return (
-    <div class="mx-auto mt-55 w-full md:w-auto px-4">
-      <Logo class="md:w-xl opacity-12" />
+    <div data-component="home-page" data-writer-mode={writer() ? "true" : "false"} class="mx-auto mt-24 w-full max-w-4xl px-4 md:mt-28">
+      <Show
+        when={writer()}
+        fallback={<Logo class="md:w-xl opacity-12" />}
+      >
+        <div data-component="writer-home-hero" class="mx-auto max-w-3xl text-center">
+          <div data-component="writer-home-kicker" class="text-12-medium uppercase tracking-[0.18em] text-text-weak">
+            Mantur Editor
+          </div>
+          <div data-component="writer-home-title" class="mt-4 text-text-strong">
+            {language.t("session.new.title.writer")}
+          </div>
+          <div data-component="writer-home-subtitle" class="mx-auto mt-3 max-w-xl text-14-regular text-text-base">
+            {language.t("home.empty.description")}
+          </div>
+        </div>
+      </Show>
       <Switch>
         <Match when={sync.data.project.length > 0}>
-          <div class="mt-20 w-full flex flex-col gap-4">
+          <div class="mt-14 w-full flex flex-col gap-4">
             <div class="flex gap-2 items-center justify-between pl-3">
               <div class="text-14-medium text-text-strong">{language.t("home.recentProjects")}</div>
               <Button icon="folder-add-left" size="normal" class="pl-2 pr-3" onClick={chooseProject}>
                 {language.t("command.project.open")}
               </Button>
             </div>
-            <ul class="flex flex-col gap-2">
+            <ul data-component="writer-home-list" class="flex flex-col gap-3">
               <For each={recent()}>
                 {(project) => (
                   <Button
                     size="large"
                     variant="ghost"
-                    class="text-left justify-between px-3"
+                    class="text-left justify-between px-4 py-4"
                     onClick={() => openProject(project.worktree)}
                   >
-                    <span class={writer() ? "text-14-medium text-text-strong" : "text-14-mono text-text-strong"}>
-                      {writer()
-                        ? project.name || getFilename(project.worktree)
-                        : project.worktree.replace(homedir(), "~")}
-                    </span>
-                    <div class="text-14-regular text-text-weak">
+                    <div class="min-w-0 flex flex-col items-start gap-1">
+                      <span class={writer() ? "text-14-medium text-text-strong" : "text-14-mono text-text-strong"}>
+                        {writer()
+                          ? project.name || getFilename(project.worktree)
+                          : project.worktree.replace(homedir(), "~")}
+                      </span>
+                      <Show when={writer()}>
+                        <div class="text-12-regular text-text-weak truncate max-w-full">
+                          {project.worktree.replace(homedir(), "~")}
+                        </div>
+                      </Show>
+                    </div>
+                    <div class="text-14-regular text-text-weak shrink-0">
                       {DateTime.fromMillis(project.time.updated ?? project.time.created).toRelative()}
                     </div>
                   </Button>
@@ -100,7 +122,7 @@ export default function Home() {
           </div>
         </Match>
         <Match when={true}>
-          <div class="mt-30 mx-auto flex flex-col items-center gap-3">
+          <div class="mt-20 mx-auto flex flex-col items-center gap-3">
             <Icon name="folder-add-left" size="large" />
             <div class="flex flex-col gap-1 items-center justify-center">
               <div class="text-14-medium text-text-strong">{language.t("home.empty.title")}</div>

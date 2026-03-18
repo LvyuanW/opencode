@@ -1,4 +1,5 @@
 import { BusEvent } from "@/bus/bus-event"
+import { Bus } from "@/bus"
 import z from "zod"
 import { formatPatch, structuredPatch } from "diff"
 import path from "path"
@@ -15,6 +16,8 @@ import { Protected } from "./protected"
 import { InstanceContext } from "@/effect/instance-context"
 import { Effect, Layer, ServiceMap } from "effect"
 import { runPromiseInstance } from "@/effect/runtime"
+import { FileWatcher } from "./watcher"
+import { LSP } from "@/lsp"
 
 const log = Log.create({ service: "file" })
 
@@ -326,6 +329,16 @@ export namespace File {
     })
   export type Content = z.infer<typeof Content>
 
+  export const WriteInput = z
+    .object({
+      path: z.string(),
+      content: z.string(),
+    })
+    .meta({
+      ref: "FileWriteInput",
+    })
+  export type WriteInput = z.infer<typeof WriteInput>
+
   export const Event = {
     Edited: BusEvent.define(
       "file.edited",
@@ -351,6 +364,10 @@ export namespace File {
     return runPromiseInstance(FileService.use((s) => s.list(dir)))
   }
 
+  export async function write(file: string, content: string): Promise<Content> {
+    return runPromiseInstance(FileService.use((s) => s.write(file, content)))
+  }
+
   export async function search(input: { query: string; limit?: number; dirs?: boolean; type?: "file" | "directory" }) {
     return runPromiseInstance(FileService.use((s) => s.search(input)))
   }
@@ -362,6 +379,7 @@ export namespace FileService {
     readonly status: () => Effect.Effect<File.Info[]>
     readonly read: (file: string) => Effect.Effect<File.Content>
     readonly list: (dir?: string) => Effect.Effect<File.Node[]>
+    readonly write: (file: string, content: string) => Effect.Effect<File.Content>
     readonly search: (input: {
       query: string
       limit?: number
@@ -595,7 +613,7 @@ export class FileService extends ServiceMap.Service<FileService, FileService.Ser
             return { type: "text", content, mimeType, encoding: "base64" }
           }
 
-          const content = (await Filesystem.readText(full).catch(() => "")).trim()
+          const content = await Filesystem.readText(full).catch(() => "")
 
           if (instance.project.vcs === "git") {
             let diff = (
@@ -617,6 +635,33 @@ export class FileService extends ServiceMap.Service<FileService, FileService.Ser
             }
           }
           return { type: "text", content }
+        })
+      })
+
+      const write = Effect.fn("FileService.write")(function* (file: string, content: string) {
+        return yield* Effect.promise(async (): Promise<File.Content> => {
+          using _ = log.time("write", { file })
+          const full = path.join(instance.directory, file)
+
+          if (!Instance.containsPath(full)) {
+            throw new Error(`Access denied: path escapes project directory`)
+          }
+
+          const exists = await Filesystem.exists(full)
+          await Filesystem.write(full, content)
+          await Bus.publish(File.Event.Edited, {
+            file: full,
+          })
+          await Bus.publish(FileWatcher.Event.Updated, {
+            file: full,
+            event: exists ? "change" : "add",
+          })
+          await LSP.touchFile(full, false).catch(() => {})
+
+          return {
+            type: "text",
+            content,
+          }
         })
       })
 
@@ -718,7 +763,7 @@ export class FileService extends ServiceMap.Service<FileService, FileService.Ser
 
       log.info("init")
 
-      return FileService.of({ init, status, read, list, search })
+      return FileService.of({ init, status, read, list, write, search })
     }),
   )
 }

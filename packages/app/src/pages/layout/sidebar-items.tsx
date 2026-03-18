@@ -297,6 +297,7 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
 
   return (
     <div
+      data-component="session-item"
       data-session-id={props.session.id}
       class="group/session relative w-full rounded-md cursor-default pl-2 pr-3 transition-colors
              hover:bg-surface-raised-base-hover [&:has(:focus-visible)]:bg-surface-raised-base-hover has-[[data-expanded]]:bg-surface-raised-base-hover has-[.active]:bg-surface-base-active"
@@ -394,7 +395,10 @@ export const NewSessionItem = (props: {
   )
 
   return (
-    <div class="group/session relative w-full rounded-md cursor-default transition-colors pl-2 pr-3 hover:bg-surface-raised-base-hover [&:has(:focus-visible)]:bg-surface-raised-base-hover has-[.active]:bg-surface-base-active">
+    <div
+      data-component="session-item"
+      class="group/session relative w-full rounded-md cursor-default transition-colors pl-2 pr-3 hover:bg-surface-raised-base-hover [&:has(:focus-visible)]:bg-surface-raised-base-hover has-[.active]:bg-surface-base-active"
+    >
       <Show
         when={!tooltip()}
         fallback={

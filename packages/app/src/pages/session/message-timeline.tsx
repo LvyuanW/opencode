@@ -29,10 +29,21 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { messageAgentColor } from "@/utils/agent"
 import { parseCommentNote, readCommentMetadata } from "@/utils/comment-note"
+import { parseSelectionNote, readSelectionMetadata } from "@/utils/selection-note"
 
 type MessageComment = {
   path: string
   comment: string
+  selection?: {
+    startLine: number
+    endLine: number
+  }
+}
+
+type MessageSelection = {
+  path: string
+  quote: string
+  preview?: string
   selection?: {
     startLine: number
     endLine: number
@@ -56,6 +67,26 @@ const messageComments = (parts: Part[]): MessageComment[] =>
       {
         path: next.path,
         comment: next.comment,
+        selection: next.selection
+          ? {
+              startLine: next.selection.startLine,
+              endLine: next.selection.endLine,
+            }
+          : undefined,
+      },
+    ]
+  })
+
+const messageSelections = (parts: Part[]): MessageSelection[] =>
+  parts.flatMap((part) => {
+    if (part.type !== "text" || !(part as TextPart).synthetic) return []
+    const next = readSelectionMetadata(part.metadata) ?? parseSelectionNote(part.text)
+    if (!next) return []
+    return [
+      {
+        path: next.path,
+        quote: next.quote,
+        preview: next.preview,
         selection: next.selection
           ? {
               startLine: next.selection.startLine,
@@ -948,6 +979,10 @@ export function MessageTimeline(props: {
                     equals: (a, b) => JSON.stringify(a) === JSON.stringify(b),
                   })
                   const commentCount = createMemo(() => comments().length)
+                  const selections = createMemo(() => messageSelections(sync.data.part[messageID] ?? []), [], {
+                    equals: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+                  })
+                  const selectionCount = createMemo(() => selections().length)
                   return (
                     <div
                       id={props.anchor(messageID)}
@@ -987,6 +1022,47 @@ export function MessageTimeline(props: {
                                           </div>
                                           <div class="pt-1 text-12-regular text-text-strong whitespace-pre-wrap break-words">
                                             {c().comment}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </Show>
+                                  )
+                                }}
+                              </Index>
+                            </div>
+                          </div>
+                        </div>
+                      </Show>
+                      <Show when={selectionCount() > 0}>
+                        <div class="w-full px-4 md:px-5 pb-2">
+                          <div class="ml-auto max-w-[82%] overflow-x-auto no-scrollbar">
+                            <div class="flex w-max min-w-full justify-end gap-2">
+                              <Index each={selections()}>
+                                {(selectionAccessor: () => MessageSelection) => {
+                                  const selection = createMemo(() => selectionAccessor())
+                                  return (
+                                    <Show when={selection()}>
+                                      {(s) => (
+                                        <div class="shrink-0 max-w-[320px] rounded-[6px] border border-border-weak-base bg-background-stronger px-2.5 py-2">
+                                          <div class="flex items-center gap-1.5 min-w-0 text-11-medium text-text-strong">
+                                            <Icon name="window-cursor" class="size-3.5 shrink-0" />
+                                            <FileIcon
+                                              node={{ path: s().path, type: "file" }}
+                                              class="size-3.5 shrink-0"
+                                            />
+                                            <span class="truncate">{getFilename(s().path)}</span>
+                                            <Show when={s().selection}>
+                                              {(range) => (
+                                                <span class="shrink-0 text-text-weak">
+                                                  {range().startLine === range().endLine
+                                                    ? `:${range().startLine}`
+                                                    : `:${range().startLine}-${range().endLine}`}
+                                                </span>
+                                              )}
+                                            </Show>
+                                          </div>
+                                          <div class="pt-1 text-12-regular text-text-strong whitespace-pre-wrap break-words">
+                                            {s().preview ?? s().quote}
                                           </div>
                                         </div>
                                       )}

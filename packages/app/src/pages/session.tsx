@@ -22,7 +22,7 @@ import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Select } from "@opencode-ai/ui/select"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { createAutoScroll } from "@opencode-ai/ui/hooks"
-import { previewSelectedLines } from "@opencode-ai/ui/pierre/selection-bridge"
+import { cloneSelectedLineRange, previewSelectedLines } from "@opencode-ai/ui/pierre/selection-bridge"
 import { Button } from "@opencode-ai/ui/button"
 import { showToast } from "@opencode-ai/ui/toast"
 import { base64Encode, checksum } from "@opencode-ai/util/encode"
@@ -850,13 +850,20 @@ export default function Page() {
     return previewSelectedLines(content, { start: selection.startLine, end: selection.endLine })
   }
 
-  const addCommentToContext = (input: {
+  type Pending = {
     file: string
     selection: SelectedLineRange
     comment: string
     preview?: string
     origin?: "review" | "file"
-  }) => {
+  }
+
+  const [queue, setQueue] = createStore({
+    items: [] as Pending[],
+  })
+  const commentReady = createMemo(() => prompt.ready() && comments.ready())
+
+  const commit = (input: Pending) => {
     const selection = selectionFromLines(input.selection)
     const preview = input.preview ?? selectionPreview(input.file, selection)
     const saved = comments.add({
@@ -864,6 +871,7 @@ export default function Page() {
       selection: input.selection,
       comment: input.comment,
     })
+    comments.setActive({ file: input.file, id: saved.id })
     prompt.context.add({
       type: "file",
       path: input.file,
@@ -873,6 +881,21 @@ export default function Page() {
       commentOrigin: input.origin,
       preview,
     })
+  }
+
+  const addCommentToContext = (input: Pending) => {
+    if (commentReady()) {
+      commit(input)
+      return
+    }
+
+    setQueue("items", (items) => [
+      ...items,
+      {
+        ...input,
+        selection: cloneSelectedLineRange(input.selection),
+      },
+    ])
   }
 
   const updateCommentInContext = (input: {
@@ -893,6 +916,14 @@ export default function Page() {
     comments.remove(input.file, input.id)
     prompt.context.removeComment(input.file, input.id)
   }
+
+  createEffect(() => {
+    if (!commentReady()) return
+    const items = queue.items
+    if (items.length === 0) return
+    setQueue("items", [])
+    for (const item of items) commit(item)
+  })
 
   const reviewCommentActions = createMemo(() => ({
     moreLabel: language.t("common.moreOptions"),
@@ -957,9 +988,14 @@ export default function Page() {
     const id = reviewFile().get(diff.file)
     if (!id) return
     return (
-      <Button size="small" variant="secondary" onClick={() => confirm([id])}>
-        {language.t("ui.common.confirm")}
-      </Button>
+      <div class="flex items-center gap-2">
+        <Button size="small" variant="ghost" onClick={() => openReviewFile(diff.file)}>
+          {language.t("common.edit")}
+        </Button>
+        <Button size="small" variant="secondary" onClick={() => confirm([id])}>
+          {language.t("ui.common.confirm")}
+        </Button>
+      </div>
     )
   }
 
@@ -1160,13 +1196,13 @@ export default function Page() {
         onScrollRef={(el) => setTree("reviewScroll", el)}
         focusedFile={tree.activeDiff}
         itemActions={reviewItemActions}
-        onLineComment={(comment) => addCommentToContext({ ...comment, origin: "review" })}
-        onLineCommentUpdate={updateCommentInContext}
-        onLineCommentDelete={removeCommentFromContext}
-        lineCommentActions={reviewCommentActions()}
-        comments={comments.all()}
-        focusedComment={comments.focus()}
-        onFocusedCommentChange={comments.setFocus}
+        onLineComment={writer() ? undefined : (comment) => addCommentToContext({ ...comment, origin: "review" })}
+        onLineCommentUpdate={writer() ? undefined : updateCommentInContext}
+        onLineCommentDelete={writer() ? undefined : removeCommentFromContext}
+        lineCommentActions={writer() ? undefined : reviewCommentActions()}
+        comments={writer() ? undefined : comments.all()}
+        focusedComment={writer() ? undefined : comments.focus()}
+        onFocusedCommentChange={writer() ? undefined : comments.setFocus}
         onViewFile={openReviewFile}
         classes={input.classes}
       />
@@ -1824,7 +1860,11 @@ export default function Page() {
   })
 
   return (
-    <div class="relative bg-background-base size-full overflow-hidden flex flex-col">
+    <div
+      data-component="session-page"
+      data-writer-mode={writer() ? "true" : "false"}
+      class="relative bg-background-base size-full overflow-hidden flex flex-col"
+    >
       <SessionHeader />
       <div class="flex-1 min-h-0 flex flex-col md:flex-row">
         <Show when={!isDesktop() && !!params.id}>
@@ -1856,6 +1896,7 @@ export default function Page() {
 
         {/* Session panel */}
         <div
+          data-component="session-main"
           classList={{
             "@container relative shrink-0 flex flex-col min-h-0 h-full bg-background-stronger flex-1 md:flex-none": true,
             "transition-[width] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] motion-reduce:transition-none":

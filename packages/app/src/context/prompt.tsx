@@ -46,6 +46,9 @@ export type FileContextItem = {
   commentID?: string
   commentOrigin?: "review" | "file"
   preview?: string
+  quote?: string
+  target?: boolean
+  armed?: number
 }
 
 export type ContextItem = FileContextItem
@@ -103,17 +106,25 @@ function clonePrompt(prompt: Prompt): Prompt {
 function contextItemKey(item: ContextItem) {
   if (item.type !== "file") return item.type
   const start = item.selection?.startLine
+  const startChar = item.selection?.startChar
   const end = item.selection?.endLine
-  const key = `${item.type}:${item.path}:${start}:${end}`
+  const endChar = item.selection?.endChar
+  const key = `${item.type}:${item.path}:${start}:${startChar}:${end}:${endChar}:${item.target ? "target" : "context"}`
 
   if (item.commentID) {
     return `${key}:c=${item.commentID}`
   }
 
   const comment = item.comment?.trim()
-  if (!comment) return key
-  const digest = checksum(comment) ?? comment
-  return `${key}:c=${digest.slice(0, 8)}`
+  if (comment) {
+    const digest = checksum(comment) ?? comment
+    return `${key}:c=${digest.slice(0, 8)}`
+  }
+
+  const quote = item.quote?.trim()
+  if (!quote) return key
+  const digest = checksum(quote) ?? quote
+  return `${key}:q=${digest.slice(0, 8)}`
 }
 
 function isCommentItem(item: ContextItem | (ContextItem & { key: string })) {

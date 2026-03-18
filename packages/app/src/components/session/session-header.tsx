@@ -276,8 +276,18 @@ export function SessionHeader() {
     <>
       <Show when={centerMount()}>
         {(mount) => (
-          <Show when={!writer()}>
-            <Portal mount={mount()}>
+          <Portal mount={mount()}>
+            <Show
+              when={!writer()}
+              fallback={
+                <div
+                  data-component="writer-title-chip"
+                  class="hidden md:flex max-w-[320px] min-w-0 items-center justify-center rounded-full border border-border-weak-base bg-surface-raised-stronger px-4 py-1.5 shadow-xs-border-base"
+                >
+                  <span class="truncate text-13-medium text-text-strong">{name()}</span>
+                </div>
+              }
+            >
               <Button
                 type="button"
                 variant="ghost"
@@ -303,8 +313,8 @@ export function SessionHeader() {
                   )}
                 </Show>
               </Button>
-            </Portal>
-          </Show>
+            </Show>
+          </Portal>
         )}
       </Show>
       <Show when={rightMount()}>
