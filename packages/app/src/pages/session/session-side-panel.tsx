@@ -1,6 +1,7 @@
 import { For, Match, Show, Switch, createEffect, createMemo, onCleanup, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createMediaQuery } from "@solid-primitives/media"
+import type { FileDiff } from "@opencode-ai/sdk/v2"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { TooltipKeybind } from "@opencode-ai/ui/tooltip"
@@ -30,6 +31,11 @@ export function SessionSidePanel(props: {
   reviewPanel: () => JSX.Element
   review: boolean
   writer: boolean
+  reviewDiffs?: () => FileDiff[]
+  reviewCount?: () => number
+  reviewHas?: () => boolean
+  reviewReady?: () => boolean
+  reviewEmpty?: () => string
   activeDiff?: string
   focusReviewDiff: (path: string) => void
   reviewSnap: boolean
@@ -64,10 +70,12 @@ export function SessionSidePanel(props: {
   const treeWidth = createMemo(() => (fileOpen() ? `${layout.fileTree.width()}px` : "0px"))
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const diffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
-  const reviewCount = createMemo(() => Math.max(info()?.summary?.files ?? 0, diffs().length))
-  const hasReview = createMemo(() => reviewCount() > 0)
+  const sessionDiffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
+  const diffs = createMemo(() => props.reviewDiffs?.() ?? sessionDiffs())
+  const reviewCount = createMemo(() => props.reviewCount?.() ?? Math.max(info()?.summary?.files ?? 0, sessionDiffs().length))
+  const hasReview = createMemo(() => props.reviewHas?.() ?? reviewCount() > 0)
   const diffsReady = createMemo(() => {
+    if (props.reviewReady) return props.reviewReady()
     const id = params.id
     if (!id) return true
     if (!hasReview()) return true
@@ -79,6 +87,7 @@ export function SessionSidePanel(props: {
     if (sync.data.config.snapshot === false) return reviewKey("session.review.noSnapshot", "session.revision.noSnapshot")
     return reviewKey("session.review.noChanges", "session.revision.noChanges")
   })
+  const reviewEmpty = createMemo(() => props.reviewEmpty?.() ?? language.t(reviewEmptyKey()))
 
   const diffFiles = createMemo(() => diffs().map((d) => d.file))
   const kinds = createMemo(() => {
@@ -428,7 +437,7 @@ export function SessionSidePanel(props: {
                 <Show when={reviewTab()}>
                   <Tabs.Content value="changes" class="bg-background-stronger px-3 py-0">
                     <Switch>
-                      <Match when={hasReview()}>
+                      <Match when={reviewCount() > 0}>
                         <Show
                           when={diffsReady()}
                           fallback={
@@ -450,7 +459,7 @@ export function SessionSidePanel(props: {
                         </Show>
                       </Match>
                       <Match when={true}>
-                        {empty(language.t(reviewEmptyKey()))}
+                        {empty(reviewEmpty())}
                       </Match>
                     </Switch>
                   </Tabs.Content>

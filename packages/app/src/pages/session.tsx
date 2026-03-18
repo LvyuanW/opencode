@@ -1,4 +1,4 @@
-import type { Project, UserMessage } from "@opencode-ai/sdk/v2"
+import type { FileDiff, Project, UserMessage } from "@opencode-ai/sdk/v2"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import {
   batch,
@@ -50,12 +50,15 @@ import { TerminalPanel } from "@/pages/session/terminal-panel"
 import { useSessionCommands } from "@/pages/session/use-session-commands"
 import { useSessionHashScroll } from "@/pages/session/use-session-hash-scroll"
 import { Identifier } from "@/utils/id"
+import { Persist, persisted } from "@/utils/persist"
 import { extractPromptFromParts } from "@/utils/prompt"
 import { same } from "@/utils/same"
 import { formatServerError } from "@/utils/server-errors"
 
 const emptyUserMessages: UserMessage[] = []
 const emptyFollowups: (FollowupDraft & { id: string })[] = []
+type Rev = { id: string; diff: FileDiff }
+const emptyRevs: Rev[] = []
 
 type SessionHistoryWindowInput = {
   sessionID: () => string | undefined
@@ -414,22 +417,9 @@ export default function Page() {
   }
 
   const info = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const diffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
-  const reviewCount = createMemo(() => Math.max(info()?.summary?.files ?? 0, diffs().length))
-  const hasReview = createMemo(() => reviewCount() > 0)
+  const sessionDiffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
   const reviewKey = (code: string, prose: string) => (writer() ? prose : code)
   const reviewTab = createMemo(() => isDesktop())
-  const tabState = createSessionTabs({
-    tabs,
-    pathFromTab: file.pathFromTab,
-    normalizeTab,
-    review: reviewTab,
-    hasReview,
-  })
-  const contextOpen = tabState.contextOpen
-  const openedTabs = tabState.openedTabs
-  const activeTab = tabState.activeTab
-  const activeFileTab = tabState.activeFileTab
   const desktopPreviewOpen = createMemo(() => {
     if (!isDesktop()) return false
     if (writer()) return layout.fileTree.opened() || view().reviewPanel.opened()
@@ -477,6 +467,90 @@ export default function Page() {
     },
   )
   const lastUserMessage = createMemo(() => visibleUserMessages().at(-1))
+  const [store, setStore] = createStore({
+    messageId: undefined as string | undefined,
+    mobileTab: "session" as "session" | "changes",
+    changes: "session" as "session" | "turn",
+    newSessionWorktree: "main",
+    deferRender: false,
+  })
+  const [rev, setRev] = persisted(
+    Persist.global("session.revision.confirm.v1"),
+    createStore({
+      items: {} as Record<string, string[]>,
+    }),
+  )
+  const done = createMemo(() => new Set(rev.items[sessionKey()] ?? []))
+
+  const revid = (msg: string, diff: FileDiff) =>
+    checksum(`${msg}\0${diff.file}\0${diff.status ?? ""}\0${diff.before}\0${diff.after}`) ??
+    `${msg}\0${diff.file}\0${diff.status ?? ""}`
+
+  const items = (msg: UserMessage) =>
+    (msg.summary?.diffs ?? []).map((diff) => ({
+      id: revid(msg.id, diff),
+      diff,
+    }))
+
+  const turnItems = createMemo(
+    () => {
+      const msg = lastUserMessage()
+      if (!msg) return emptyRevs
+      const seen = done()
+      return items(msg).filter((item) => !seen.has(item.id))
+    },
+    emptyRevs,
+    { equals: same },
+  )
+  const pendingItems = createMemo(
+    () => {
+      const seen = done()
+      const files = new Set<string>()
+      const out: Rev[] = []
+      const list = visibleUserMessages()
+      for (let idx = list.length - 1; idx >= 0; idx--) {
+        for (const item of items(list[idx])) {
+          if (files.has(item.diff.file)) continue
+          files.add(item.diff.file)
+          if (seen.has(item.id)) continue
+          out.push(item)
+        }
+      }
+      return out
+    },
+    emptyRevs,
+    { equals: same },
+  )
+  const pendingCount = createMemo(() => pendingItems().length)
+  const reviewItems = createMemo(
+    () => {
+      if (!writer()) return emptyRevs
+      return store.changes === "session" ? pendingItems() : turnItems()
+    },
+    emptyRevs,
+    { equals: same },
+  )
+  const turnDiffs = createMemo(() => (writer() ? turnItems().map((item) => item.diff) : lastUserMessage()?.summary?.diffs ?? []))
+  const reviewDiffs = createMemo(() =>
+    writer()
+      ? reviewItems().map((item) => item.diff)
+      : store.changes === "session"
+        ? sessionDiffs()
+        : turnDiffs(),
+  )
+  const reviewCount = createMemo(() => (writer() ? reviewDiffs().length : Math.max(info()?.summary?.files ?? 0, sessionDiffs().length)))
+  const hasReview = createMemo(() => (writer() ? pendingCount() > 0 || done().size > 0 : reviewCount() > 0))
+  const tabState = createSessionTabs({
+    tabs,
+    pathFromTab: file.pathFromTab,
+    normalizeTab,
+    review: reviewTab,
+    hasReview,
+  })
+  const contextOpen = tabState.contextOpen
+  const openedTabs = tabState.openedTabs
+  const activeTab = tabState.activeTab
+  const activeFileTab = tabState.activeFileTab
 
   createEffect(() => {
     const tab = activeFileTab()
@@ -508,14 +582,6 @@ export default function Page() {
       { defer: true },
     ),
   )
-
-  const [store, setStore] = createStore({
-    messageId: undefined as string | undefined,
-    mobileTab: "session" as "session" | "changes",
-    changes: "session" as "session" | "turn",
-    newSessionWorktree: "main",
-    deferRender: false,
-  })
 
   const [followup, setFollowup] = createStore({
     items: {} as Record<string, (FollowupDraft & { id: string })[] | undefined>,
@@ -557,9 +623,6 @@ export default function Page() {
     })
     return open
   }, desktopPreviewOpen())
-
-  const turnDiffs = createMemo(() => lastUserMessage()?.summary?.diffs ?? [])
-  const reviewDiffs = createMemo(() => (store.changes === "session" ? diffs() : turnDiffs()))
 
   const newSessionWorktree = createMemo(() => {
     if (store.newSessionWorktree === "create") return "create"
@@ -626,6 +689,7 @@ export default function Page() {
   }
 
   const diffsReady = createMemo(() => {
+    if (writer()) return true
     const id = params.id
     if (!id) return true
     if (!hasReview()) return true
@@ -836,6 +900,68 @@ export default function Page() {
     deleteLabel: language.t("common.delete"),
     saveLabel: language.t("common.save"),
   }))
+  const reviewEmptyText = createMemo(() => {
+    if (!writer()) return language.t(reviewEmptyKey())
+    if (store.changes === "turn") return language.t("session.revision.empty.turn")
+    if (pendingCount() === 0 && done().size > 0) return language.t("session.revision.done")
+    return language.t("session.revision.empty")
+  })
+  const reviewFile = createMemo(() => new Map(reviewItems().map((item) => [item.diff.file, item.id] as const)))
+
+  const confirm = (list: string[]) => {
+    const next = list.filter((id) => !done().has(id))
+    if (next.length === 0) return
+
+    setRev("items", sessionKey(), (prev = []) => [...new Set([...prev, ...next])])
+    showToast({
+      variant: "success",
+      title: language.t(next.length === 1 ? "session.revision.confirmed.one" : "session.revision.confirmed.other", {
+        count: next.length,
+      }),
+    })
+  }
+
+  const reset = () => {
+    if (done().size === 0) return
+    setRev("items", sessionKey(), [])
+    showToast({
+      variant: "success",
+      title: language.t("session.revision.restored"),
+    })
+  }
+
+  const reviewActions = createMemo(() => {
+    if (!writer()) return
+    const count = reviewItems().length
+    const restoreable = done().size > 0
+    if (count === 0 && !restoreable) return
+
+    return (
+      <div class="flex items-center gap-2">
+        <Show when={count > 0}>
+          <Button size="small" variant="secondary" onClick={() => confirm(reviewItems().map((item) => item.id))}>
+            {language.t("session.revision.action.confirm")}
+          </Button>
+        </Show>
+        <Show when={restoreable}>
+          <Button size="small" variant="ghost" onClick={reset}>
+            {language.t("session.revision.action.restore")}
+          </Button>
+        </Show>
+      </div>
+    )
+  })
+
+  const reviewItemActions = (diff: FileDiff) => {
+    if (!writer()) return
+    const id = reviewFile().get(diff.file)
+    if (!id) return
+    return (
+      <Button size="small" variant="secondary" onClick={() => confirm([id])}>
+        {language.t("ui.common.confirm")}
+      </Button>
+    )
+  }
 
   const isEditableTarget = (target: EventTarget | null | undefined) => {
     if (!(target instanceof HTMLElement)) return false
@@ -972,6 +1098,14 @@ export default function Page() {
   )
 
   const reviewEmpty = (input: { loadingClass: string; emptyClass: string }) => {
+    if (writer()) {
+      return (
+        <div class={input.emptyClass}>
+          <div class="text-14-regular text-text-weak max-w-56">{reviewEmptyText()}</div>
+        </div>
+      )
+    }
+
     if (store.changes === "turn") return emptyTurn()
 
     if (hasReview() && !diffsReady()) {
@@ -1018,12 +1152,14 @@ export default function Page() {
       <SessionReviewTab
         title={changesTitle()}
         empty={reviewEmpty(input)}
+        actions={reviewActions()}
         diffs={reviewDiffs}
         view={view}
         diffStyle={input.diffStyle}
         onDiffStyleChange={input.onDiffStyleChange}
         onScrollRef={(el) => setTree("reviewScroll", el)}
         focusedFile={tree.activeDiff}
+        itemActions={reviewItemActions}
         onLineComment={(comment) => addCommentToContext({ ...comment, origin: "review" })}
         onLineCommentUpdate={updateCommentInContext}
         onLineCommentDelete={removeCommentFromContext}
@@ -1103,6 +1239,16 @@ export default function Page() {
   }
 
   createEffect(() => {
+    const active = tree.activeDiff
+    if (!active) return
+    if (reviewDiffs().some((diff) => diff.file === active)) return
+    batch(() => {
+      setTree("activeDiff", undefined)
+      if (tree.pendingDiff === active) setTree("pendingDiff", undefined)
+    })
+  })
+
+  createEffect(() => {
     const pending = tree.pendingDiff
     if (!pending) return
     if (!tree.reviewScroll) return
@@ -1144,6 +1290,7 @@ export default function Page() {
   })
 
   createEffect(() => {
+    if (writer()) return
     const id = params.id
     if (!id) return
 
@@ -1163,6 +1310,7 @@ export default function Page() {
           isDesktop() ? desktopReviewOpen() || (desktopFileTreeOpen() && fileTreeTab() === "changes") : mobileChanges(),
         ] as const,
       ([key, wants]) => {
+        if (writer()) return
         if (diffFrame !== undefined) cancelAnimationFrame(diffFrame)
         if (diffTimer !== undefined) window.clearTimeout(diffTimer)
         diffFrame = undefined
@@ -1839,6 +1987,11 @@ export default function Page() {
           reviewPanel={reviewPanel}
           review
           writer={writer()}
+          reviewDiffs={reviewDiffs}
+          reviewCount={reviewCount}
+          reviewHas={hasReview}
+          reviewReady={diffsReady}
+          reviewEmpty={reviewEmptyText}
           activeDiff={tree.activeDiff}
           focusReviewDiff={focusReviewDiff}
           reviewSnap={ui.reviewSnap}

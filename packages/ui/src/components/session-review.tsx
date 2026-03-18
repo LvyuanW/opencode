@@ -87,6 +87,7 @@ export interface SessionReviewProps {
   actions?: JSX.Element
   diffs: ReviewDiff[]
   onViewFile?: (file: string) => void
+  itemActions?: (diff: ReviewDiff) => JSX.Element
   readFile?: (path: string) => Promise<FileContent | undefined>
 }
 
@@ -298,6 +299,7 @@ export const SessionReview = (props: SessionReviewProps) => {
                     const afterText = () => (typeof item().after === "string" ? item().after : "")
                     const changedLines = () => item().additions + item().deletions
                     const mediaKind = createMemo(() => mediaKindFromPath(file))
+                    const extra = createMemo(() => props.itemActions?.(item()))
 
                     const tooLarge = createMemo(() => {
                       if (!expanded()) return false
@@ -426,6 +428,15 @@ export const SessionReview = (props: SessionReviewProps) => {
                                 </div>
                               </div>
                               <div data-slot="session-review-trigger-actions">
+                                <Show when={extra()}>
+                                  <div
+                                    data-slot="session-review-trigger-extra"
+                                    onPointerDown={(event) => event.stopPropagation()}
+                                    onClick={(event) => event.stopPropagation()}
+                                  >
+                                    {extra()}
+                                  </div>
+                                </Show>
                                 <Switch>
                                   <Match when={isAdded()}>
                                     <div data-slot="session-review-change-group" data-type="added">

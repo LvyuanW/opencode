@@ -16,11 +16,13 @@ export type DiffStyle = "unified" | "split"
 export interface SessionReviewTabProps {
   title?: JSX.Element
   empty?: JSX.Element
+  actions?: JSX.Element
   diffs: () => FileDiff[]
   view: () => ReturnType<ReturnType<typeof useLayout>["view"]>
   diffStyle: DiffStyle
   onDiffStyleChange?: (style: DiffStyle) => void
   onViewFile?: (file: string) => void
+  itemActions?: (diff: FileDiff) => JSX.Element
   onLineComment?: (comment: { file: string; selection: SelectedLineRange; comment: string; preview?: string }) => void
   onLineCommentUpdate?: (comment: SessionReviewCommentUpdate) => void
   onLineCommentDelete?: (comment: SessionReviewCommentDelete) => void
@@ -133,6 +135,7 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
     <SessionReview
       title={props.title}
       empty={props.empty}
+      actions={props.actions}
       scrollRef={(el) => {
         scroll = el
         el.addEventListener("wheel", handleInteraction, { passive: true, capture: true })
@@ -156,6 +159,7 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
       diffStyle={props.diffStyle}
       onDiffStyleChange={props.onDiffStyleChange}
       onViewFile={props.onViewFile}
+      itemActions={props.itemActions}
       focusedFile={props.focusedFile}
       readFile={readFile}
       onLineComment={props.onLineComment}
