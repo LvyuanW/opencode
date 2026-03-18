@@ -1,11 +1,12 @@
-/// <reference path="./.sst/platform/config.d.ts" />
+/// <reference path="./sst.config.d.ts" />
 
 export default $config({
   app(input) {
+    const stage = input?.stage
     return {
       name: "opencode",
-      removal: input?.stage === "production" ? "retain" : "remove",
-      protect: ["production"].includes(input?.stage),
+      removal: stage === "production" ? "retain" : "remove",
+      protect: stage === "production",
       home: "cloudflare",
       providers: {
         stripe: {

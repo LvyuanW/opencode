@@ -16,6 +16,7 @@ import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
 import { usePlatform } from "@/context/platform"
 import { useServer } from "@/context/server"
+import { useSettings } from "@/context/settings"
 import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
 import { focusTerminalById } from "@/pages/session/helpers"
@@ -135,8 +136,10 @@ export function SessionHeader() {
   const platform = usePlatform()
   const language = useLanguage()
   const sync = useSync()
+  const settings = useSettings()
   const terminal = useTerminal()
   const { params, view } = useSessionLayout()
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
 
   const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
   const project = createMemo(() => {
@@ -205,6 +208,10 @@ export function SessionHeader() {
     const id = terminal.active()
     if (!id) return
     focusTerminalById(id)
+  }
+  const toggleReview = () => {
+    if (writer()) layout.fileTree.open()
+    view().reviewPanel.toggle()
   }
 
   const [prefs, setPrefs] = persisted(Persist.global("open.app"), createStore({ app: "finder" as OpenApp }))
@@ -419,32 +426,34 @@ export function SessionHeader() {
                 <Tooltip placement="bottom" value={language.t("status.popover.trigger")}>
                   <StatusPopover />
                 </Tooltip>
-                <TooltipKeybind
-                  title={language.t("command.terminal.toggle")}
-                  keybind={command.keybind("terminal.toggle")}
-                >
-                  <Button
-                    variant="ghost"
-                    class="group/terminal-toggle titlebar-icon w-8 h-6 p-0 box-border shrink-0"
-                    onClick={toggleTerminal}
-                    aria-label={language.t("command.terminal.toggle")}
-                    aria-expanded={view().terminal.opened()}
-                    aria-controls="terminal-panel"
+                <Show when={!writer()}>
+                  <TooltipKeybind
+                    title={language.t("command.terminal.toggle")}
+                    keybind={command.keybind("terminal.toggle")}
                   >
-                    <Icon size="small" name={view().terminal.opened() ? "terminal-active" : "terminal"} />
-                  </Button>
-                </TooltipKeybind>
+                    <Button
+                      variant="ghost"
+                      class="group/terminal-toggle titlebar-icon w-8 h-6 p-0 box-border shrink-0"
+                      onClick={toggleTerminal}
+                      aria-label={language.t("command.terminal.toggle")}
+                      aria-expanded={view().terminal.opened()}
+                      aria-controls="terminal-panel"
+                    >
+                      <Icon size="small" name={view().terminal.opened() ? "terminal-active" : "terminal"} />
+                    </Button>
+                  </TooltipKeybind>
+                </Show>
 
                 <div class="hidden md:flex items-center gap-1 shrink-0">
                   <TooltipKeybind
-                    title={language.t("command.review.toggle")}
+                    title={language.t(writer() ? "command.review.toggle.writer" : "command.review.toggle")}
                     keybind={command.keybind("review.toggle")}
                   >
                     <Button
                       variant="ghost"
                       class="group/review-toggle titlebar-icon w-8 h-6 p-0 box-border"
-                      onClick={() => view().reviewPanel.toggle()}
-                      aria-label={language.t("command.review.toggle")}
+                      onClick={toggleReview}
+                      aria-label={language.t(writer() ? "command.review.toggle.writer" : "command.review.toggle")}
                       aria-expanded={view().reviewPanel.opened()}
                       aria-controls="review-panel"
                     >

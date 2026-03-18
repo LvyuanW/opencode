@@ -4,8 +4,14 @@ import z from "zod"
 import { Config } from "../config/config"
 import { Instance } from "../project/instance"
 import { Identifier } from "../id/id"
+import PROMPT_CHARACTER from "./template/character.txt"
+import PROMPT_CONTINUITY from "./template/continuity.txt"
+import PROMPT_DIALOG from "./template/dialog.txt"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
+import PROMPT_OUTLINE from "./template/outline.txt"
+import PROMPT_POLISH from "./template/polish.txt"
 import PROMPT_REVIEW from "./template/review.txt"
+import PROMPT_SCENE from "./template/scene.txt"
 import { MCP } from "../mcp"
 import { Skill } from "../skill"
 
@@ -91,6 +97,54 @@ export namespace Command {
         },
         subtask: true,
         hints: hints(PROMPT_REVIEW),
+      },
+      outline: {
+        name: "outline",
+        description: "build or revise an outline for the current story idea",
+        agent: "writer",
+        source: "command",
+        template: PROMPT_OUTLINE,
+        hints: hints(PROMPT_OUTLINE),
+      },
+      scene: {
+        name: "scene",
+        description: "draft or rewrite a scene with clear dramatic intent",
+        agent: "writer",
+        source: "command",
+        template: PROMPT_SCENE,
+        hints: hints(PROMPT_SCENE),
+      },
+      dialog: {
+        name: "dialog",
+        description: "improve dialogue while preserving character voice",
+        agent: "writer",
+        source: "command",
+        template: PROMPT_DIALOG,
+        hints: hints(PROMPT_DIALOG),
+      },
+      polish: {
+        name: "polish",
+        description: "polish wording, rhythm, and clarity without losing intent",
+        agent: "writer",
+        source: "command",
+        template: PROMPT_POLISH,
+        hints: hints(PROMPT_POLISH),
+      },
+      character: {
+        name: "character",
+        description: "develop or refine a character profile, motive, and voice",
+        agent: "writer",
+        source: "command",
+        template: PROMPT_CHARACTER,
+        hints: hints(PROMPT_CHARACTER),
+      },
+      continuity: {
+        name: "continuity",
+        description: "check continuity across plot, character, and timeline details",
+        agent: "writer",
+        source: "command",
+        template: PROMPT_CONTINUITY,
+        hints: hints(PROMPT_CONTINUITY),
       },
     }
 

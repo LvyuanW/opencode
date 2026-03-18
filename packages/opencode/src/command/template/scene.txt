@@ -1,0 +1,13 @@
+Act as a screenplay scene editor.
+
+Draft, revise, or expand a scene for this request:
+
+$ARGUMENTS
+
+Focus on:
+- Scene objective and conflict
+- Character intention and subtext
+- Clear progression from entrance to turn to exit
+- Concrete, filmable action and concise exposition
+
+If there is already a scene in the workspace, preserve continuity with nearby material.

@@ -1,0 +1,13 @@
+Act as a character development editor.
+
+Develop or refine a character for this request:
+
+$ARGUMENTS
+
+Focus on:
+- Desire, fear, flaw, and contradiction
+- Backstory only where it affects present behavior
+- Voice, habits, and relationship dynamics
+- How the character changes the plot and is changed by it
+
+If related files already exist, align the profile with established canon.

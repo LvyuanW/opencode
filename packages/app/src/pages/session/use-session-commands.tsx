@@ -9,6 +9,7 @@ import { useLocal } from "@/context/local"
 import { usePermission } from "@/context/permission"
 import { usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
+import { useSettings } from "@/context/settings"
 import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
 import { DialogSelectFile } from "@/components/dialog-select-file"
@@ -45,11 +46,13 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   const permission = usePermission()
   const prompt = usePrompt()
   const sdk = useSDK()
+  const settings = useSettings()
   const sync = useSync()
   const terminal = useTerminal()
   const layout = useLayout()
   const navigate = useNavigate()
   const { params, tabs, view } = useSessionLayout()
+  const writer = () => settings.general.workspaceMode() === "writer"
 
   const info = () => {
     const id = params.id
@@ -90,6 +93,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   }
 
   const showAllFiles = () => {
+    layout.fileTree.open()
     if (layout.fileTree.tab() !== "changes") return
     layout.fileTree.setTab("all")
   }
@@ -294,18 +298,25 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
           addSelectionToContext(path, selectionFromLines(range))
         },
       }),
-      viewCommand({
-        id: "terminal.toggle",
-        title: language.t("command.terminal.toggle"),
-        keybind: "ctrl+`",
-        slash: "terminal",
-        onSelect: () => view().terminal.toggle(),
-      }),
+      ...(writer()
+        ? []
+        : [
+            viewCommand({
+              id: "terminal.toggle",
+              title: language.t("command.terminal.toggle"),
+              keybind: "ctrl+`",
+              slash: "terminal",
+              onSelect: () => view().terminal.toggle(),
+            }),
+          ]),
       viewCommand({
         id: "review.toggle",
-        title: language.t("command.review.toggle"),
+        title: language.t(writer() ? "command.review.toggle.writer" : "command.review.toggle"),
         keybind: "mod+shift+r",
-        onSelect: () => view().reviewPanel.toggle(),
+        onSelect: () => {
+          if (writer()) layout.fileTree.open()
+          view().reviewPanel.toggle()
+        },
       }),
       viewCommand({
         id: "fileTree.toggle",
@@ -319,16 +330,20 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
         keybind: "ctrl+l",
         onSelect: focusInput,
       }),
-      terminalCommand({
-        id: "terminal.new",
-        title: language.t("command.terminal.new"),
-        description: language.t("command.terminal.new.description"),
-        keybind: "ctrl+alt+t",
-        onSelect: () => {
-          if (terminal.all().length > 0) terminal.new()
-          view().terminal.open()
-        },
-      }),
+      ...(writer()
+        ? []
+        : [
+            terminalCommand({
+              id: "terminal.new",
+              title: language.t("command.terminal.new"),
+              description: language.t("command.terminal.new.description"),
+              keybind: "ctrl+alt+t",
+              onSelect: () => {
+                if (terminal.all().length > 0) terminal.new()
+                view().terminal.open()
+              },
+            }),
+          ]),
       sessionCommand({
         id: "message.previous",
         title: language.t("command.message.previous"),
@@ -353,14 +368,18 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
         slash: "model",
         onSelect: () => dialog.show(() => <DialogSelectModel model={local.model} />),
       }),
-      mcpCommand({
-        id: "mcp.toggle",
-        title: language.t("command.mcp.toggle"),
-        description: language.t("command.mcp.toggle.description"),
-        keybind: "mod+;",
-        slash: "mcp",
-        onSelect: () => dialog.show(() => <DialogSelectMcp />),
-      }),
+      ...(writer()
+        ? []
+        : [
+            mcpCommand({
+              id: "mcp.toggle",
+              title: language.t("command.mcp.toggle"),
+              description: language.t("command.mcp.toggle.description"),
+              keybind: "mod+;",
+              slash: "mcp",
+              onSelect: () => dialog.show(() => <DialogSelectMcp />),
+            }),
+          ]),
       agentCommand({
         id: "agent.cycle",
         title: language.t("command.agent.cycle"),

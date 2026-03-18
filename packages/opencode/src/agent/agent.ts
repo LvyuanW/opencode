@@ -14,6 +14,7 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_WRITER from "./prompt/writer.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -89,6 +90,39 @@ export namespace Agent {
         ),
         mode: "primary",
         native: true,
+      },
+      writer: {
+        name: "writer",
+        description: "Writing-focused agent for story development, scene drafting, revision, and continuity work.",
+        options: {},
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            "*": "deny",
+            question: "allow",
+            read: {
+              "*": "allow",
+              "*.env": "ask",
+              "*.env.*": "ask",
+              "*.env.example": "allow",
+            },
+            edit: "allow",
+            glob: "allow",
+            grep: "allow",
+            skill: "allow",
+            webfetch: "allow",
+            todoread: "allow",
+            todowrite: "allow",
+            external_directory: {
+              "*": "ask",
+              ...Object.fromEntries(whitelistedDirs.map((dir) => [dir, "allow"])),
+            },
+          }),
+          user,
+        ),
+        mode: "primary",
+        native: true,
+        prompt: PROMPT_WRITER,
       },
       plan: {
         name: "plan",

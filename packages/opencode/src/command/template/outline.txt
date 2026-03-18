@@ -1,0 +1,13 @@
+Act as a story editor.
+
+Use the current project files and context to build or revise a story outline for this request:
+
+$ARGUMENTS
+
+Focus on:
+- Core premise and dramatic question
+- Structure, beats, and escalation
+- Character goals, conflict, and change
+- Missing transitions, weak turns, or pacing gaps
+
+If the user has an existing outline, improve it instead of replacing it blindly.

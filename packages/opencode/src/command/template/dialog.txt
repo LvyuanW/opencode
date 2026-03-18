@@ -1,0 +1,13 @@
+Act as a dialogue coach for scripted scenes.
+
+Improve or generate dialogue for this request:
+
+$ARGUMENTS
+
+Focus on:
+- Distinct character voice
+- Subtext over explanation
+- Rhythm, interruption, and tension
+- Cutting repetitive or generic lines
+
+Keep dialogue consistent with the surrounding scene and character history.

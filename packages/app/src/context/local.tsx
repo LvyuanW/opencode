@@ -4,6 +4,7 @@ import { useParams } from "@solidjs/router"
 import { batch, createEffect, createMemo, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useModels } from "@/context/models"
+import { useSettings } from "@/context/settings"
 import { useProviders } from "@/hooks/use-providers"
 import { modelEnabled, modelProbe } from "@/testing/model-selection"
 import { Persist, persisted } from "@/utils/persist"
@@ -58,12 +59,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const params = useParams()
     const sdk = useSDK()
     const sync = useSync()
+    const settings = useSettings()
     const providers = useProviders()
     const models = useModels()
 
     const id = createMemo(() => params.id || undefined)
     const list = createMemo(() => sync.data.agent.filter((item) => item.mode !== "subagent" && !item.hidden))
     const connected = createMemo(() => new Set(providers.connected().map((item) => item.id)))
+    const writer = createMemo(() => settings.general.workspaceMode() === "writer")
 
     const [saved, setSaved] = persisted(
       {
@@ -85,7 +88,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         variant?: string | null
       }
     }>({
-      current: list()[0]?.name,
+      current: undefined,
       draft: undefined,
       last: undefined,
     })
@@ -106,7 +109,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const pickAgent = (name: string | undefined) => {
       const items = list()
       if (items.length === 0) return undefined
-      return items.find((item) => item.name === name) ?? items[0]
+      if (name) return items.find((item) => item.name === name) ?? items[0]
+      if (writer()) return items.find((item) => item.name === "writer") ?? items[0]
+      return items[0]
     }
 
     createEffect(() => {
@@ -115,8 +120,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (store.current !== undefined) setStore("current", undefined)
         return
       }
+      if (store.current === undefined) return
       if (items.some((item) => item.name === store.current)) return
-      setStore("current", items[0]?.name)
+      setStore("current", undefined)
     })
 
     const scope = createMemo<State | undefined>(() => {
@@ -178,6 +184,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return pickAgent(scope()?.agent ?? store.current)
       },
       set(name: string | undefined) {
+        if (name === undefined) {
+          setStore("current", undefined)
+          return
+        }
         const item = pickAgent(name)
         if (!item) {
           setStore("current", undefined)

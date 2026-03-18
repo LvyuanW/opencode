@@ -118,6 +118,10 @@ export const SettingsGeneral: Component = () => {
     { value: "queue", label: language.t("settings.general.row.followup.option.queue") },
     { value: "steer", label: language.t("settings.general.row.followup.option.steer") },
   ])
+  const workspaceModeOptions = createMemo((): { value: "code" | "writer"; label: string }[] => [
+    { value: "code", label: language.t("settings.general.row.workspaceMode.option.code") },
+    { value: "writer", label: language.t("settings.general.row.workspaceMode.option.writer") },
+  ])
 
   const languageOptions = createMemo(() =>
     language.locales.map((locale) => ({
@@ -193,6 +197,24 @@ export const SettingsGeneral: Component = () => {
             variant="secondary"
             size="small"
             triggerVariant="settings"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title={language.t("settings.general.row.workspaceMode.title")}
+          description={language.t("settings.general.row.workspaceMode.description")}
+        >
+          <Select
+            data-action="settings-workspace-mode"
+            options={workspaceModeOptions()}
+            current={workspaceModeOptions().find((o) => o.value === settings.general.workspaceMode())}
+            value={(o) => o.value}
+            label={(o) => o.label}
+            onSelect={(option) => option && settings.general.setWorkspaceMode(option.value)}
+            variant="secondary"
+            size="small"
+            triggerVariant="settings"
+            triggerStyle={{ "min-width": "180px" }}
           />
         </SettingsRow>
 

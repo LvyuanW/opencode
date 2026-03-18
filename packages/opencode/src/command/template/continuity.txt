@@ -1,0 +1,13 @@
+Act as a story continuity editor.
+
+Audit the current material for continuity issues related to this request:
+
+$ARGUMENTS
+
+Check for:
+- Timeline and causality breaks
+- Character knowledge mismatches
+- Inconsistent motivation, tone, or world rules
+- Setup and payoff gaps
+
+Report concrete issues first, then suggest the smallest viable fixes.

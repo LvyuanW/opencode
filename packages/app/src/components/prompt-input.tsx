@@ -34,6 +34,7 @@ import { Persist, persisted } from "@/utils/persist"
 import { usePermission } from "@/context/permission"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
+import { useSettings } from "@/context/settings"
 import { useSessionLayout } from "@/pages/session/session-layout"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { promptEnabled, promptProbe } from "@/testing/prompt"
@@ -70,7 +71,7 @@ interface PromptInputProps {
   onSubmit?: () => void
 }
 
-const EXAMPLES = [
+const CODE_EXAMPLES = [
   "prompt.example.1",
   "prompt.example.2",
   "prompt.example.3",
@@ -97,6 +98,18 @@ const EXAMPLES = [
   "prompt.example.24",
   "prompt.example.25",
 ] as const
+const WRITER_EXAMPLES = [
+  "prompt.writer_example.1",
+  "prompt.writer_example.2",
+  "prompt.writer_example.3",
+  "prompt.writer_example.4",
+  "prompt.writer_example.5",
+  "prompt.writer_example.6",
+  "prompt.writer_example.7",
+  "prompt.writer_example.8",
+  "prompt.writer_example.9",
+  "prompt.writer_example.10",
+] as const
 
 const NON_EMPTY_TEXT = /[^\s\u200B]/
 
@@ -114,6 +127,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const permission = usePermission()
   const language = useLanguage()
   const platform = usePlatform()
+  const settings = useSettings()
   const { params, tabs, view } = useSessionLayout()
   let editorRef!: HTMLDivElement
   let fileInputRef: HTMLInputElement | undefined
@@ -204,6 +218,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     const wantsReview = item.commentOrigin === "review" || (item.commentOrigin !== "file" && commentInReview(item.path))
     if (wantsReview) {
+      layout.fileTree.open()
       if (!view().reviewPanel.opened()) view().reviewPanel.open()
       layout.fileTree.setTab("changes")
       tabs().setActive("review")
@@ -211,6 +226,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return
     }
 
+    layout.fileTree.open()
     if (!view().reviewPanel.opened()) view().reviewPanel.open()
     layout.fileTree.setTab("all")
     const tab = files.tab(item.path)
@@ -277,11 +293,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     popover: null,
     historyIndex: -1,
     savedPrompt: null as PromptHistoryEntry | null,
-    placeholder: Math.floor(Math.random() * EXAMPLES.length),
+    placeholder: Math.floor(Math.random() * CODE_EXAMPLES.length),
     draggingType: null,
     mode: "normal",
     applyingHistory: false,
   })
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
+  const examples = createMemo<readonly string[]>(() => (writer() ? WRITER_EXAMPLES : CODE_EXAMPLES))
 
   const buttonsSpring = useSpring(() => (store.mode === "normal" ? 1 : 0), { visualDuration: 0.2, bounce: 0 })
   const motion = (value: number) => ({
@@ -331,12 +349,17 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   )
 
   const suggest = createMemo(() => !hasUserPrompt())
+  const example = createMemo(() => {
+    const items = examples()
+    if (items.length === 0) return ""
+    return language.t(items[store.placeholder % items.length])
+  })
 
   const placeholder = createMemo(() =>
     promptPlaceholder({
       mode: store.mode,
       commentCount: commentCount(),
-      example: suggest() ? language.t(EXAMPLES[store.placeholder]) : "",
+      example: suggest() ? example() : "",
       suggest: suggest(),
       t: (key, params) => language.t(key as Parameters<typeof language.t>[0], params as never),
     }),
@@ -441,32 +464,38 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const shellModeKey = "mod+shift+x"
   const normalModeKey = "mod+shift+e"
 
-  command.register("prompt-input", () => [
-    {
-      id: "file.attach",
-      title: language.t("prompt.action.attachFile"),
-      category: language.t("command.category.file"),
-      keybind: "mod+u",
-      disabled: store.mode !== "normal",
-      onSelect: pick,
-    },
-    {
-      id: "prompt.mode.shell",
-      title: language.t("command.prompt.mode.shell"),
-      category: language.t("command.category.session"),
-      keybind: shellModeKey,
-      disabled: store.mode === "shell",
-      onSelect: () => setMode("shell"),
-    },
-    {
-      id: "prompt.mode.normal",
-      title: language.t("command.prompt.mode.normal"),
-      category: language.t("command.category.session"),
-      keybind: normalModeKey,
-      disabled: store.mode === "normal",
-      onSelect: () => setMode("normal"),
-    },
-  ])
+  command.register("prompt-input", () => {
+    const items = [
+      {
+        id: "file.attach",
+        title: language.t("prompt.action.attachFile"),
+        category: language.t("command.category.file"),
+        keybind: "mod+u",
+        disabled: store.mode !== "normal",
+        onSelect: pick,
+      },
+    ]
+    if (writer()) return items
+    return [
+      ...items,
+      {
+        id: "prompt.mode.shell",
+        title: language.t("command.prompt.mode.shell"),
+        category: language.t("command.category.session"),
+        keybind: shellModeKey,
+        disabled: store.mode === "shell",
+        onSelect: () => setMode("shell"),
+      },
+      {
+        id: "prompt.mode.normal",
+        title: language.t("command.prompt.mode.normal"),
+        category: language.t("command.category.session"),
+        keybind: normalModeKey,
+        disabled: store.mode === "normal",
+        onSelect: () => setMode("normal"),
+      },
+    ]
+  })
 
   const closePopover = () => setStore("popover", null)
 
@@ -513,10 +542,26 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     params.id
     if (params.id) return
     if (!suggest()) return
+    const items = examples()
+    if (items.length === 0) return
     const interval = setInterval(() => {
-      setStore("placeholder", (prev) => (prev + 1) % EXAMPLES.length)
+      setStore("placeholder", (prev) => (prev + 1) % items.length)
     }, 6500)
     onCleanup(() => clearInterval(interval))
+  })
+
+  createEffect(() => {
+    const items = examples()
+    if (items.length === 0) return
+    if (store.placeholder < items.length) return
+    setStore("placeholder", 0)
+  })
+
+  createEffect(() => {
+    if (!writer()) return
+    if (store.mode !== "shell") return
+    setStore("mode", "normal")
+    setStore("popover", null)
   })
 
   const [composing, setComposing] = createSignal(false)
@@ -1123,7 +1168,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       }
     }
 
-    if (event.key === "!" && store.mode === "normal") {
+    if (!writer() && event.key === "!" && store.mode === "normal") {
       const cursorPosition = getCursorPosition(editorRef)
       if (cursorPosition === 0) {
         setStore("mode", "shell")

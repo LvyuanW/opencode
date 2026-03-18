@@ -343,6 +343,7 @@ export default function Page() {
 
   const workspaceKey = createMemo(() => params.dir ?? "")
   const workspaceTabs = createMemo(() => layout.tabs(workspaceKey))
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
 
   createEffect(
     on(
@@ -384,13 +385,6 @@ export default function Page() {
   const size = createSizing()
   const desktopReviewOpen = createMemo(() => isDesktop() && view().reviewPanel.opened())
   const desktopFileTreeOpen = createMemo(() => isDesktop() && layout.fileTree.opened())
-  const desktopSidePanelOpen = createMemo(() => desktopReviewOpen() || desktopFileTreeOpen())
-  const sessionPanelWidth = createMemo(() => {
-    if (!desktopSidePanelOpen()) return "100%"
-    if (desktopReviewOpen()) return `${layout.session.width()}px`
-    return `calc(100% - ${layout.fileTree.width()}px)`
-  })
-  const centered = createMemo(() => isDesktop() && !desktopReviewOpen())
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -410,6 +404,12 @@ export default function Page() {
   }
 
   const openReviewPanel = () => {
+    if (writer()) {
+      layout.fileTree.open()
+      view().reviewPanel.open()
+      layout.fileTree.setTab("all")
+      return
+    }
     if (!view().reviewPanel.opened()) view().reviewPanel.open()
   }
 
@@ -417,6 +417,7 @@ export default function Page() {
   const diffs = createMemo(() => (params.id ? (sync.data.session_diff[params.id] ?? []) : []))
   const reviewCount = createMemo(() => Math.max(info()?.summary?.files ?? 0, diffs().length))
   const hasReview = createMemo(() => reviewCount() > 0)
+  const reviewKey = (code: string, prose: string) => (writer() ? prose : code)
   const reviewTab = createMemo(() => isDesktop())
   const tabState = createSessionTabs({
     tabs,
@@ -429,6 +430,18 @@ export default function Page() {
   const openedTabs = tabState.openedTabs
   const activeTab = tabState.activeTab
   const activeFileTab = tabState.activeFileTab
+  const desktopPreviewOpen = createMemo(() => {
+    if (!isDesktop()) return false
+    if (writer()) return layout.fileTree.opened() || view().reviewPanel.opened()
+    return view().reviewPanel.opened()
+  })
+  const desktopSidePanelOpen = createMemo(() => desktopPreviewOpen() || desktopFileTreeOpen())
+  const sessionPanelWidth = createMemo(() => {
+    if (!desktopSidePanelOpen()) return "100%"
+    if (desktopPreviewOpen()) return `${layout.session.width()}px`
+    return `calc(100% - ${layout.fileTree.width()}px)`
+  })
+  const centered = createMemo(() => isDesktop() && !desktopPreviewOpen())
   const revertMessageID = createMemo(() => info()?.revert?.messageID)
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
   const messagesReady = createMemo(() => {
@@ -533,7 +546,7 @@ export default function Page() {
   let diffTimer: number | undefined
 
   createComputed((prev) => {
-    const open = desktopReviewOpen()
+    const open = desktopPreviewOpen()
     if (prev === undefined || prev === open) return open
 
     if (reviewFrame !== undefined) cancelAnimationFrame(reviewFrame)
@@ -543,7 +556,7 @@ export default function Page() {
       setUi("reviewSnap", false)
     })
     return open
-  }, desktopReviewOpen())
+  }, desktopPreviewOpen())
 
   const turnDiffs = createMemo(() => lastUserMessage()?.summary?.diffs ?? [])
   const reviewDiffs = createMemo(() => (store.changes === "session" ? diffs() : turnDiffs()))
@@ -620,9 +633,9 @@ export default function Page() {
   })
   const reviewEmptyKey = createMemo(() => {
     const project = sync.project
-    if (project && !project.vcs) return "session.review.noVcs"
-    if (sync.data.config.snapshot === false) return "session.review.noSnapshot"
-    return "session.review.empty"
+    if (project && !project.vcs) return reviewKey("session.review.noVcs", "session.revision.unavailable")
+    if (sync.data.config.snapshot === false) return reviewKey("session.review.noSnapshot", "session.revision.noSnapshot")
+    return reviewKey("session.review.empty", "session.revision.empty")
   })
 
   function upsert(next: Project) {
@@ -758,6 +771,14 @@ export default function Page() {
       { defer: true },
     ),
   )
+
+  createEffect(() => {
+    if (!writer()) return
+    if (layout.fileTree.opened()) return
+    if (!view().reviewPanel.opened() && openedTabs().length === 0 && !contextOpen()) return
+    layout.fileTree.open()
+    layout.fileTree.setTab("all")
+  })
 
   const selectionPreview = (path: string, selection: FileSelection) => {
     const content = file.get(path)?.content?.content
@@ -895,6 +916,7 @@ export default function Page() {
   )
 
   const showAllFiles = () => {
+    layout.fileTree.open()
     if (fileTreeTab() !== "changes") return
     setFileTreeTab("all")
   }
@@ -929,7 +951,9 @@ export default function Page() {
         options={changesOptionsList}
         current={store.changes}
         label={(option) =>
-          option === "session" ? language.t("ui.sessionReview.title") : language.t("ui.sessionReview.title.lastTurn")
+          option === "session"
+            ? language.t(reviewKey("ui.sessionReview.title", "ui.sessionRevision.title"))
+            : language.t(reviewKey("ui.sessionReview.title.lastTurn", "ui.sessionRevision.title.lastTurn"))
         }
         onSelect={(option) => option && setStore("changes", option)}
         variant="ghost"
@@ -941,7 +965,9 @@ export default function Page() {
 
   const emptyTurn = () => (
     <div class="h-full pb-64 -mt-4 flex flex-col items-center justify-center text-center gap-6">
-      <div class="text-14-regular text-text-weak max-w-56">{language.t("session.review.noChanges")}</div>
+      <div class="text-14-regular text-text-weak max-w-56">
+        {language.t(reviewKey("session.review.noChanges", "session.revision.noChanges"))}
+      </div>
     </div>
   )
 
@@ -949,10 +975,14 @@ export default function Page() {
     if (store.changes === "turn") return emptyTurn()
 
     if (hasReview() && !diffsReady()) {
-      return <div class={input.loadingClass}>{language.t("session.review.loadingChanges")}</div>
+      return (
+        <div class={input.loadingClass}>
+          {language.t(reviewKey("session.review.loadingChanges", "session.revision.loadingChanges"))}
+        </div>
+      )
     }
 
-    if (reviewEmptyKey() === "session.review.noVcs") {
+    if (!writer() && reviewEmptyKey() === "session.review.noVcs") {
       return (
         <div class={input.emptyClass}>
           <div class="flex flex-col gap-3">
@@ -1118,8 +1148,8 @@ export default function Page() {
     if (!id) return
 
     const wants = isDesktop()
-      ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
-      : store.mobileTab === "changes"
+      ? !writer() && (desktopReviewOpen() || (desktopFileTreeOpen() && fileTreeTab() === "changes"))
+      : mobileChanges()
     if (!wants) return
     if (sync.data.session_diff[id] !== undefined) return
     if (sync.status === "loading") return
@@ -1133,8 +1163,8 @@ export default function Page() {
         [
           sessionKey(),
           isDesktop()
-            ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
-            : store.mobileTab === "changes",
+            ? !writer() && (desktopReviewOpen() || (desktopFileTreeOpen() && fileTreeTab() === "changes"))
+            : mobileChanges(),
         ] as const,
       ([key, wants]) => {
         if (diffFrame !== undefined) cancelAnimationFrame(diffFrame)
@@ -1671,8 +1701,10 @@ export default function Page() {
                 onClick={() => setStore("mobileTab", "changes")}
               >
                 {hasReview()
-                  ? language.t("session.review.filesChanged", { count: reviewCount() })
-                  : language.t("session.review.change.other")}
+                  ? language.t(reviewKey("session.review.filesChanged", "session.revision.filesChanged"), {
+                      count: reviewCount(),
+                    })
+                  : language.t(reviewKey("session.review.change.other", "session.revision.change.other"))}
               </Tabs.Trigger>
             </Tabs.List>
           </Tabs>
@@ -1791,7 +1823,7 @@ export default function Page() {
             }}
           />
 
-          <Show when={desktopReviewOpen()}>
+          <Show when={desktopPreviewOpen()}>
             <div onPointerDown={() => size.start()}>
               <ResizeHandle
                 direction="horizontal"
@@ -1809,6 +1841,8 @@ export default function Page() {
 
         <SessionSidePanel
           reviewPanel={reviewPanel}
+          review
+          writer={writer()}
           activeDiff={tree.activeDiff}
           focusReviewDiff={focusReviewDiff}
           reviewSnap={ui.reviewSnap}
@@ -1816,7 +1850,9 @@ export default function Page() {
         />
       </div>
 
-      <TerminalPanel />
+      <Show when={!writer()}>
+        <TerminalPanel />
+      </Show>
     </div>
   )
 }

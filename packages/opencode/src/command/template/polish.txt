@@ -1,0 +1,13 @@
+Act as a writing editor.
+
+Polish the selected draft for this request:
+
+$ARGUMENTS
+
+Focus on:
+- Clarity and flow
+- Tone and voice consistency
+- Stronger verbs and cleaner phrasing
+- Removing repetition, drift, and filler
+
+Preserve the original meaning unless the user asks for a deeper rewrite.

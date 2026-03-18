@@ -28,6 +28,8 @@ import { useSessionLayout } from "@/pages/session/session-layout"
 
 export function SessionSidePanel(props: {
   reviewPanel: () => JSX.Element
+  review: boolean
+  writer: boolean
   activeDiff?: string
   focusReviewDiff: (path: string) => void
   reviewSnap: boolean
@@ -43,13 +45,19 @@ export function SessionSidePanel(props: {
 
   const isDesktop = createMediaQuery("(min-width: 768px)")
 
-  const reviewOpen = createMemo(() => isDesktop() && view().reviewPanel.opened())
+  const reviewKey = (code: string, prose: string) => (props.writer ? prose : code)
+  const previewOpen = createMemo(() => {
+    if (!isDesktop()) return false
+    if (props.writer) return layout.fileTree.opened() || view().reviewPanel.opened()
+    if (!props.review) return layout.fileTree.opened()
+    return view().reviewPanel.opened()
+  })
   const fileOpen = createMemo(() => isDesktop() && layout.fileTree.opened())
-  const open = createMemo(() => reviewOpen() || fileOpen())
-  const reviewTab = createMemo(() => isDesktop())
+  const open = createMemo(() => previewOpen() || fileOpen())
+  const reviewTab = createMemo(() => props.review && isDesktop())
   const panelWidth = createMemo(() => {
     if (!open()) return "0px"
-    if (reviewOpen()) return `calc(100% - ${layout.session.width()}px)`
+    if (previewOpen()) return `calc(100% - ${layout.session.width()}px)`
     return `${layout.fileTree.width()}px`
   })
   const treeWidth = createMemo(() => (fileOpen() ? `${layout.fileTree.width()}px` : "0px"))
@@ -66,9 +74,9 @@ export function SessionSidePanel(props: {
   })
 
   const reviewEmptyKey = createMemo(() => {
-    if (sync.project && !sync.project.vcs) return "session.review.noVcs"
-    if (sync.data.config.snapshot === false) return "session.review.noSnapshot"
-    return "session.review.noChanges"
+    if (sync.project && !sync.project.vcs) return reviewKey("session.review.noVcs", "session.revision.unavailable")
+    if (sync.data.config.snapshot === false) return reviewKey("session.review.noSnapshot", "session.revision.noSnapshot")
+    return reviewKey("session.review.noChanges", "session.revision.noChanges")
   })
 
   const diffFiles = createMemo(() => diffs().map((d) => d.file))
@@ -119,6 +127,17 @@ export function SessionSidePanel(props: {
   }
 
   const openReviewPanel = () => {
+    if (props.writer) {
+      layout.fileTree.open()
+      view().reviewPanel.open()
+      layout.fileTree.setTab("all")
+      return
+    }
+    if (!props.review) {
+      layout.fileTree.open()
+      layout.fileTree.setTab("all")
+      return
+    }
     if (!view().reviewPanel.opened()) view().reviewPanel.open()
   }
 
@@ -151,9 +170,16 @@ export function SessionSidePanel(props: {
   }
 
   const showAllFiles = () => {
+    layout.fileTree.open()
     if (fileTreeTab() !== "changes") return
     layout.fileTree.setTab("all")
   }
+
+  createEffect(() => {
+    if (reviewTab()) return
+    if (fileTreeTab() !== "changes") return
+    layout.fileTree.setTab("all")
+  })
 
   const [store, setStore] = createStore({
     activeDraggable: undefined as string | undefined,
@@ -204,7 +230,7 @@ export function SessionSidePanel(props: {
     <Show when={isDesktop()}>
       <aside
         id="review-panel"
-        aria-label={language.t("session.panel.reviewAndFiles")}
+        aria-label={language.t(reviewKey("session.panel.reviewAndFiles", "session.panel.revisionAndFiles"))}
         aria-hidden={!open()}
         inert={!open()}
         class="relative min-w-0 h-full flex shrink-0 overflow-hidden bg-background-base"
@@ -217,11 +243,11 @@ export function SessionSidePanel(props: {
       >
         <div class="size-full flex border-l border-border-weaker-base">
           <div
-            aria-hidden={!reviewOpen()}
-            inert={!reviewOpen()}
+            aria-hidden={!previewOpen()}
+            inert={!previewOpen()}
             class="relative min-w-0 h-full flex-1 overflow-hidden bg-background-base"
             classList={{
-              "pointer-events-none": !reviewOpen(),
+              "pointer-events-none": !previewOpen(),
             }}
           >
             <div class="size-full min-w-0 h-full bg-background-base">
@@ -244,7 +270,7 @@ export function SessionSidePanel(props: {
                       <Show when={reviewTab()}>
                         <Tabs.Trigger value="review">
                           <div class="flex items-center gap-1.5">
-                            <div>{language.t("session.tab.review")}</div>
+                            <div>{language.t(reviewKey("session.tab.review", "session.tab.revision"))}</div>
                             <Show when={hasReview()}>
                               <div>{reviewCount()}</div>
                             </Show>
@@ -366,7 +392,7 @@ export function SessionSidePanel(props: {
           >
             <div
               class="h-full flex flex-col overflow-hidden group/filetree"
-              classList={{ "border-l border-border-weaker-base": reviewOpen() }}
+              classList={{ "border-l border-border-weaker-base": previewOpen() }}
             >
               <Tabs
                 variant="pill"
@@ -376,44 +402,50 @@ export function SessionSidePanel(props: {
                 data-scope="filetree"
               >
                 <Tabs.List>
-                  <Tabs.Trigger value="changes" class="flex-1" classes={{ button: "w-full" }}>
-                    {reviewCount()}{" "}
-                    {language.t(reviewCount() === 1 ? "session.review.change.one" : "session.review.change.other")}
-                  </Tabs.Trigger>
+                  <Show when={reviewTab()}>
+                    <Tabs.Trigger value="changes" class="flex-1" classes={{ button: "w-full" }}>
+                      {reviewCount()}{" "}
+                      {language.t(
+                        reviewCount() === 1
+                          ? reviewKey("session.review.change.one", "session.revision.change.one")
+                          : reviewKey("session.review.change.other", "session.revision.change.other"),
+                      )}
+                    </Tabs.Trigger>
+                  </Show>
                   <Tabs.Trigger value="all" class="flex-1" classes={{ button: "w-full" }}>
                     {language.t("session.files.all")}
                   </Tabs.Trigger>
                 </Tabs.List>
-                <Tabs.Content value="changes" class="bg-background-stronger px-3 py-0">
-                  <Switch>
-                    <Match when={hasReview()}>
-                      <Show
-                        when={diffsReady()}
-                        fallback={
-                          <div class="px-2 py-2 text-12-regular text-text-weak">
-                            {language.t("common.loading")}
-                            {language.t("common.loading.ellipsis")}
-                          </div>
-                        }
-                      >
-                        <FileTree
-                          path=""
-                          class="pt-3"
-                          allowed={diffFiles()}
-                          kinds={kinds()}
-                          draggable={false}
-                          active={props.activeDiff}
-                          onFileClick={(node) => props.focusReviewDiff(node.path)}
-                        />
-                      </Show>
-                    </Match>
-                    <Match when={true}>
-                      {empty(
-                        language.t(sync.project && !sync.project.vcs ? "session.review.noChanges" : reviewEmptyKey()),
-                      )}
-                    </Match>
-                  </Switch>
-                </Tabs.Content>
+                <Show when={reviewTab()}>
+                  <Tabs.Content value="changes" class="bg-background-stronger px-3 py-0">
+                    <Switch>
+                      <Match when={hasReview()}>
+                        <Show
+                          when={diffsReady()}
+                          fallback={
+                            <div class="px-2 py-2 text-12-regular text-text-weak">
+                              {language.t("common.loading")}
+                              {language.t("common.loading.ellipsis")}
+                            </div>
+                          }
+                        >
+                          <FileTree
+                            path=""
+                            class="pt-3"
+                            allowed={diffFiles()}
+                            kinds={kinds()}
+                            draggable={false}
+                            active={props.activeDiff}
+                            onFileClick={(node) => props.focusReviewDiff(node.path)}
+                          />
+                        </Show>
+                      </Match>
+                      <Match when={true}>
+                        {empty(language.t(reviewEmptyKey()))}
+                      </Match>
+                    </Switch>
+                  </Tabs.Content>
+                </Show>
                 <Tabs.Content value="all" class="bg-background-stronger px-3 py-0">
                   <Switch>
                     <Match when={nofiles()}>{empty(language.t("session.files.empty"))}</Match>

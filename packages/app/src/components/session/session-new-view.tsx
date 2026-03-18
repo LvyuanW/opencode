@@ -3,6 +3,7 @@ import { DateTime } from "luxon"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useLanguage } from "@/context/language"
+import { useSettings } from "@/context/settings"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Mark } from "@opencode-ai/ui/logo"
 import { getDirectory, getFilename } from "@opencode-ai/util/path"
@@ -19,9 +20,11 @@ export function NewSessionView(props: NewSessionViewProps) {
   const sync = useSync()
   const sdk = useSDK()
   const language = useLanguage()
+  const settings = useSettings()
 
   const sandboxes = createMemo(() => sync.project?.sandboxes ?? [])
   const options = createMemo(() => [MAIN_WORKTREE, ...sandboxes(), CREATE_WORKTREE])
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
   const current = createMemo(() => {
     const selection = props.worktree
     if (options().includes(selection)) return selection
@@ -54,7 +57,9 @@ export function NewSessionView(props: NewSessionViewProps) {
         <div class="w-full max-w-200 flex flex-col items-center text-center gap-4">
           <div class="flex flex-col items-center gap-6">
             <Mark class="w-10" />
-            <div class="text-20-medium text-text-strong">{language.t("session.new.title")}</div>
+            <div class="text-20-medium text-text-strong">
+              {language.t(writer() ? "session.new.title.writer" : "session.new.title")}
+            </div>
           </div>
           <div class="w-full flex flex-col gap-4 items-center">
             <div class="flex items-start justify-center gap-3 min-h-5">

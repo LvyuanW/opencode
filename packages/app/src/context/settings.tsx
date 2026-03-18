@@ -18,8 +18,11 @@ export interface SoundSettings {
   errors: string
 }
 
+export type WorkspaceMode = "code" | "writer"
+
 export interface Settings {
   general: {
+    workspaceMode: WorkspaceMode
     autoSave: boolean
     releaseNotes: boolean
     followup: "queue" | "steer"
@@ -44,6 +47,7 @@ export interface Settings {
 
 const defaultSettings: Settings = {
   general: {
+    workspaceMode: "code",
     autoSave: true,
     releaseNotes: true,
     followup: "steer",
@@ -120,6 +124,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         return store
       },
       general: {
+        workspaceMode: withFallback(() => store.general?.workspaceMode, defaultSettings.general.workspaceMode),
+        setWorkspaceMode(value: WorkspaceMode) {
+          setStore("general", "workspaceMode", value)
+        },
         autoSave: withFallback(() => store.general?.autoSave, defaultSettings.general.autoSave),
         setAutoSave(value: boolean) {
           setStore("general", "autoSave", value)
