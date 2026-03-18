@@ -1,5 +1,6 @@
 import type {
   Agent,
+  AppSkillsResponse,
   Command,
   Config,
   FileDiff,
@@ -35,6 +36,7 @@ export type State = {
   status: "loading" | "partial" | "complete"
   agent: Agent[]
   command: Command[]
+  skill: AppSkillsResponse
   project: string
   projectMeta: ProjectMeta | undefined
   icon: string | undefined

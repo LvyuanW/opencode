@@ -27,7 +27,19 @@ const log = Log.create({ service: "skill" })
 const EXTERNAL_DIRS = [".claude", ".agents"]
 const EXTERNAL_SKILL_PATTERN = "skills/**/SKILL.md"
 const OPENCODE_SKILL_PATTERN = "{skill,skills}/**/SKILL.md"
+const WRITER_USERS_DIR = ".writer-users"
+const WRITER_SKILL_PATTERN = ".skills/**/SKILL.md"
 const SKILL_PATTERN = "**/SKILL.md"
+
+function writerRoot(dir: string) {
+  let current = path.resolve(dir)
+  while (true) {
+    const parent = path.dirname(current)
+    if (path.basename(parent) === WRITER_USERS_DIR) return current
+    if (parent === current) return
+    current = parent
+  }
+}
 
 export namespace Skill {
   export const Info = z.object({
@@ -201,6 +213,24 @@ export class SkillService extends ServiceMap.Service<SkillService, SkillService.
       }
 
       async function scan() {
+        const writer = writerRoot(instance.directory)
+        if (writer) {
+          const skills: Record<string, Skill.Info> = {}
+          const skillDirs = new Set<string>()
+          const matches = await Glob.scan(WRITER_SKILL_PATTERN, {
+            cwd: writer,
+            absolute: true,
+            include: "file",
+            dot: true,
+            symlink: true,
+          })
+          for (const match of matches) {
+            await addSkill(match, skills, skillDirs)
+          }
+          log.info("init", { count: Object.keys(skills).length, writer: true })
+          return { skills, skillDirs }
+        }
+
         const base = await scanRemote()
         const skills = { ...base.skills }
         const skillDirs = new Set(base.skillDirs)

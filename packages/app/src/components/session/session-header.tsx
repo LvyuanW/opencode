@@ -24,6 +24,7 @@ import { useSessionLayout } from "@/pages/session/session-layout"
 import { messageAgentColor } from "@/utils/agent"
 import { decode64 } from "@/utils/base64"
 import { Persist, persisted } from "@/utils/persist"
+import { writerBase } from "@/utils/writer-path"
 import { StatusPopover } from "../status-popover"
 
 const OPEN_APPS = [
@@ -141,7 +142,7 @@ export function SessionHeader() {
   const { params, view } = useSessionLayout()
   const writer = createMemo(() => settings.general.workspaceMode() === "writer")
 
-  const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
+  const projectDirectory = createMemo(() => (writer() ? writerBase(decode64(params.dir) ?? "") : decode64(params.dir) ?? ""))
   const project = createMemo(() => {
     const directory = projectDirectory()
     if (!directory) return

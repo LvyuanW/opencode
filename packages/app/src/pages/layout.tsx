@@ -17,6 +17,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { Persist, persisted } from "@/utils/persist"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { decode64 } from "@/utils/base64"
+import { writerUser, writerVisitor } from "@/utils/writer-path"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Button } from "@opencode-ai/ui/button"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -621,10 +622,17 @@ export default function Layout(props: ParentProps) {
     setStore("workspaceBranchName", projectId, branch, next)
   }
 
-  const workspaceLabel = (directory: string, branch?: string, projectId?: string) =>
-    workspaceName(directory, projectId, branch) ?? branch ?? getFilename(directory)
+  const workspaceLabel = (directory: string, branch?: string, projectId?: string) => {
+    if (writer()) {
+      const root = projectRoot(directory)
+      const project = globalSync.data.project.find((item) => item.id === projectId || item.worktree === root)
+      return project?.name || getFilename(project?.worktree ?? root)
+    }
+    return workspaceName(directory, projectId, branch) ?? branch ?? getFilename(directory)
+  }
 
   const workspaceSetting = createMemo(() => {
+    if (writer()) return false
     const project = currentProject()
     if (!project) return false
     if (project.vcs !== "git") return false
@@ -632,6 +640,11 @@ export default function Layout(props: ParentProps) {
   })
 
   const visibleSessionDirs = createMemo(() => {
+    if (writer()) {
+      const dir = currentDir()
+      return dir ? [dir] : []
+    }
+
     const project = currentProject()
     if (!project) return [] as string[]
     if (!workspaceSetting()) return [project.worktree]
@@ -1234,15 +1247,19 @@ export default function Layout(props: ParentProps) {
     if (!directory) return
     const root = projectRoot(directory)
     server.projects.touch(root)
+    const user = writer() ? writerUser(root, writerVisitor()) : root
     const project = layout.projects.list().find((item) => item.worktree === root)
-    let dirs = project
-      ? effectiveWorkspaceOrder(root, [root, ...(project.sandboxes ?? [])], store.workspaceOrder[root])
-      : [root]
+    let dirs = writer()
+      ? [user]
+      : project
+        ? effectiveWorkspaceOrder(root, [root, ...(project.sandboxes ?? [])], store.workspaceOrder[root])
+        : [root]
     const canOpen = (value: string | undefined) => {
       if (!value) return false
       return dirs.some((item) => workspaceKey(item) === workspaceKey(value))
     }
     const refreshDirs = async (target?: string) => {
+      if (writer()) return canOpen(target)
       if (!target || target === root || canOpen(target)) return canOpen(target)
       const listed = await globalSDK.client.worktree
         .list({ directory: root })
@@ -1302,7 +1319,7 @@ export default function Layout(props: ParentProps) {
       return
     }
 
-    navigateWithSidebarReset(`/${base64Encode(root)}/session`)
+    navigateWithSidebarReset(`/${base64Encode(user)}/session`)
   }
 
   function navigateToSession(session: Session | undefined) {
@@ -1795,6 +1812,12 @@ export default function Layout(props: ParentProps) {
 
   function workspaceIds(project: LocalProject | undefined) {
     if (!project) return []
+    if (writer()) {
+      const active = currentProject()
+      const directory = active?.worktree === project.worktree ? currentDir() : writerUser(project.worktree, writerVisitor())
+      return [directory]
+    }
+
     const local = project.worktree
     const dirs = [local, ...(project.sandboxes ?? [])]
     const active = currentProject()

@@ -11,6 +11,8 @@ import { base64Encode } from "@opencode-ai/util/encode"
 import { decode64 } from "@/utils/base64"
 import { showToast } from "@opencode-ai/ui/toast"
 import { useLanguage } from "@/context/language"
+import { useSettings } from "@/context/settings"
+import { writerBase, writerUser, writerVisitor } from "@/utils/writer-path"
 function DirectoryDataProvider(props: ParentProps<{ directory: string }>) {
   const navigate = useNavigate()
   const sync = useSync()
@@ -33,8 +35,14 @@ export default function Layout(props: ParentProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const language = useLanguage()
+  const settings = useSettings()
   const globalSDK = useGlobalSDK()
-  const directory = createMemo(() => decode64(params.dir) ?? "")
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
+  const directory = createMemo(() => {
+    const raw = decode64(params.dir) ?? ""
+    if (!writer()) return raw
+    return writerBase(raw)
+  })
   const [state, setState] = createStore({ invalid: "", resolved: "" })
 
   createEffect(() => {
@@ -53,6 +61,7 @@ export default function Layout(props: ParentProps) {
     }
 
     const current = params.dir
+    const route = decode64(current) ?? raw
     globalSDK
       .createClient({
         directory: raw,
@@ -61,12 +70,13 @@ export default function Layout(props: ParentProps) {
       .path.get()
       .then((x) => {
         if (params.dir !== current) return
-        const next = x.data?.directory ?? raw
+        const root = x.data?.directory ?? raw
+        const next = writer() ? writerUser(root, writerVisitor()) : root
         batch(() => {
           setState("invalid", "")
           setState("resolved", next)
         })
-        if (next === raw) return
+        if (next === route) return
         const path = location.pathname.slice(current.length + 1)
         navigate(`/${base64Encode(next)}${path}${location.search}${location.hash}`, { replace: true })
       })

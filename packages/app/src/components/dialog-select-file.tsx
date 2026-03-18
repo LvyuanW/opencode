@@ -14,11 +14,13 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useLayout } from "@/context/layout"
 import { useFile } from "@/context/file"
 import { useLanguage } from "@/context/language"
+import { useSDK } from "@/context/sdk"
 import { useSettings } from "@/context/settings"
 import { useSessionLayout } from "@/pages/session/session-layout"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { decode64 } from "@/utils/base64"
 import { getRelativeTime } from "@/utils/time"
+import { writerBase } from "@/utils/writer-path"
 
 type EntryType = "command" | "file" | "session"
 
@@ -267,6 +269,7 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
   const settings = useSettings()
   const layout = useLayout()
   const file = useFile()
+  const sdk = useSDK()
   const dialog = useDialog()
   const navigate = useNavigate()
   const globalSDK = useGlobalSDK()
@@ -277,14 +280,17 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
   const [grouped, setGrouped] = createSignal(false)
   const commandEntries = createCommandEntries({ filesOnly, command, language })
   const fileEntries = createFileEntries({ file, tabs, language })
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
 
-  const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
+  const projectDirectory = createMemo(() => (writer() ? writerBase(decode64(params.dir) ?? "") : decode64(params.dir) ?? ""))
   const project = createMemo(() => {
     const directory = projectDirectory()
     if (!directory) return
     return layout.projects.list().find((p) => p.worktree === directory || p.sandboxes?.includes(directory))
   })
   const workspaces = createMemo(() => {
+    if (writer()) return [sdk.directory]
+
     const directory = projectDirectory()
     const current = project()
     if (!current) return directory ? [directory] : []
@@ -294,18 +300,19 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
     return dirs
   })
   const homedir = createMemo(() => globalSync.data.path.home)
-  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
   const pick = (code: string, prose: string) => (writer() ? prose : code)
   const label = (directory: string) => {
     const current = project()
     const kind =
-      current && directory === current.worktree
+      writer()
+        ? language.t("workspace.type.local.writer")
+        : current && directory === current.worktree
         ? language.t(pick("workspace.type.local", "workspace.type.local.writer"))
         : language.t(pick("workspace.type.sandbox", "workspace.type.sandbox.writer"))
     const [store] = globalSync.child(directory, { bootstrap: false })
     const home = homedir()
     const path = home ? directory.replace(home, "~") : directory
-    const name = store.vcs?.branch ?? getFilename(directory)
+    const name = writer() ? current?.name || getFilename(current?.worktree ?? projectDirectory()) : store.vcs?.branch ?? getFilename(directory)
     return `${kind} : ${name || path}`
   }
 
