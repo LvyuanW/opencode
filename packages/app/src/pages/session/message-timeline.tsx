@@ -259,6 +259,7 @@ export function MessageTimeline(props: {
   const language = useLanguage()
   const { params, sessionKey } = useSessionKey()
   const platform = usePlatform()
+  const writer = createMemo(() => settings.general.workspaceMode() === "writer")
 
   const rendered = createMemo(() => props.renderedUserMessages.map((message) => message.id))
   const sessionID = createMemo(() => params.id)
@@ -340,7 +341,8 @@ export function MessageTimeline(props: {
   const shareUrl = createMemo(() => info()?.share?.url)
   const shareEnabled = createMemo(() => sync.data.config.share !== "disabled")
   const parentID = createMemo(() => info()?.parentID)
-  const showHeader = createMemo(() => !!(titleValue() || parentID()))
+  const head = createMemo(() => titleValue() || (writer() ? language.t("session.tab.session") : undefined))
+  const showHeader = createMemo(() => writer() || !!(titleValue() || parentID()))
   const stageCfg = { init: 1, batch: 3 }
   const staging = createTimelineStaging({
     sessionKey,
@@ -726,7 +728,7 @@ export function MessageTimeline(props: {
                           </div>
                         </Show>
                       </div>
-                      <Show when={titleValue() || title.editing}>
+                      <Show when={head() || title.editing}>
                         <Show
                           when={title.editing}
                           fallback={
@@ -734,7 +736,7 @@ export function MessageTimeline(props: {
                               class="text-14-medium text-text-strong truncate grow-1 min-w-0"
                               onDblClick={openTitleEditor}
                             >
-                              {titleValue()}
+                              {head()}
                             </h1>
                           }
                         >

@@ -1,6 +1,7 @@
 import { useFile } from "@/context/file"
 import { encodeFilePath } from "@/context/file/path"
 import { Collapsible } from "@opencode-ai/ui/collapsible"
+import { ContextMenu } from "@opencode-ai/ui/context-menu"
 import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { Icon } from "@opencode-ai/ui/icon"
 import {
@@ -21,9 +22,38 @@ import { Dynamic } from "solid-js/web"
 import type { FileNode } from "@opencode-ai/sdk/v2"
 
 const MAX_DEPTH = 128
+const DRAG_KEY = "application/x-opencode-filetree-path"
+let drag = ""
 
 function pathToFileUrl(filepath: string): string {
   return `file://${encodeFilePath(filepath)}`
+}
+
+function parent(input: string) {
+  const idx = input.lastIndexOf("/")
+  if (idx === -1) return ""
+  return input.slice(0, idx)
+}
+
+export function dragValue(input: { raw?: string; text?: string; drag?: string }) {
+  if (input.raw) return input.raw
+  if (input.text?.startsWith("file:")) return input.text.slice("file:".length)
+  return input.drag
+}
+
+function dragPath(event: DragEvent) {
+  return dragValue({
+    raw: event.dataTransfer?.getData(DRAG_KEY),
+    text: event.dataTransfer?.getData("text/plain"),
+    drag,
+  })
+}
+
+function canMove(from: string, to: string) {
+  if (from === to) return false
+  if (parent(from) === to) return false
+  if (to.startsWith(from + "/")) return false
+  return true
 }
 
 type Kind = "add" | "del" | "mix"
@@ -117,6 +147,7 @@ const FileTreeNode = (
       active?: string
       nodeClass?: string
       draggable: boolean
+      movable?: boolean
       kinds?: ReadonlyMap<string, Kind>
       marks?: Set<string>
       as?: "div" | "button"
@@ -128,6 +159,7 @@ const FileTreeNode = (
     "active",
     "nodeClass",
     "draggable",
+    "movable",
     "kinds",
     "marks",
     "as",
@@ -157,10 +189,15 @@ const FileTreeNode = (
       draggable={local.draggable}
       onDragStart={(event: DragEvent) => {
         if (!local.draggable) return
+        drag = local.node.path
+        if (local.movable) event.dataTransfer?.setData(DRAG_KEY, local.node.path)
         event.dataTransfer?.setData("text/plain", `file:${local.node.path}`)
         event.dataTransfer?.setData("text/uri-list", pathToFileUrl(local.node.path))
-        if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy"
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = local.movable ? "copyMove" : "copy"
         withFileDragImage(event)
+      }}
+      onDragEnd={() => {
+        drag = ""
       }}
       {...rest}
     >
@@ -202,6 +239,8 @@ export default function FileTree(props: {
   kinds?: ReadonlyMap<string, Kind>
   draggable?: boolean
   onFileClick?: (file: FileNode) => void
+  onMove?: (from: string, to: string) => void | Promise<void>
+  onMenu?: (node: FileNode) => JSXElement
 
   _filter?: Filter
   _marks?: Set<string>
@@ -212,6 +251,7 @@ export default function FileTree(props: {
   const file = useFile()
   const level = props.level ?? 0
   const draggable = () => props.draggable ?? true
+  const movable = () => Boolean(props.onMove)
 
   const key = (p: string) =>
     file
@@ -303,6 +343,43 @@ export default function FileTree(props: {
     return out
   })
 
+  const over = (event: DragEvent, target: string) => {
+    if (!props.onMove) return
+    const from = dragPath(event)
+    if (!from) return
+    const src = key(from)
+    const to = key(target)
+    if (!canMove(src, to)) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move"
+  }
+
+  const drop = (event: DragEvent, target: string) => {
+    if (!props.onMove) return
+    const from = dragPath(event)
+    if (!from) return
+    const src = key(from)
+    const to = key(target)
+    if (!canMove(src, to)) return
+    event.preventDefault()
+    event.stopPropagation()
+    drag = ""
+    void props.onMove(src, to)
+  }
+
+  const menu = (node: FileNode, child: JSXElement) => {
+    if (!props.onMenu) return child
+    return (
+      <ContextMenu modal={false}>
+        <ContextMenu.Trigger class="block w-full">{child}</ContextMenu.Trigger>
+        <ContextMenu.Portal>
+          <ContextMenu.Content>{props.onMenu(node)}</ContextMenu.Content>
+        </ContextMenu.Portal>
+      </ContextMenu>
+    )
+  }
+
   createEffect(() => {
     const current = filter()
     const dirs = dirsToExpand({
@@ -385,7 +462,12 @@ export default function FileTree(props: {
   })
 
   return (
-    <div data-component="filetree" class={`flex flex-col gap-0.5 ${props.class ?? ""}`}>
+    <div
+      data-component="filetree"
+      class={`flex flex-col gap-0.5 ${props.class ?? ""}`}
+      onDragOver={(event: DragEvent) => over(event, props.path)}
+      onDrop={(event: DragEvent) => drop(event, props.path)}
+    >
       <For each={nodes()}>
         {(node) => {
           const expanded = () => file.tree.state(node.path)?.expanded ?? false
@@ -405,19 +487,25 @@ export default function FileTree(props: {
                   onOpenChange={(open) => (open ? file.tree.expand(node.path) : file.tree.collapse(node.path))}
                 >
                   <Collapsible.Trigger>
-                    <FileTreeNode
-                      node={node}
-                      level={level}
-                      active={props.active}
+                    {menu(
+                      node,
+                      <FileTreeNode
+                        node={node}
+                        level={level}
+                        active={props.active}
                       nodeClass={props.nodeClass}
                       draggable={draggable()}
+                      movable={movable()}
                       kinds={kinds()}
                       marks={marks()}
-                    >
-                      <div class="size-4 flex items-center justify-center text-icon-weak">
-                        <Icon name={expanded() ? "chevron-down" : "chevron-right"} size="small" />
-                      </div>
-                    </FileTreeNode>
+                      onDragOver={(event: DragEvent) => over(event, node.path)}
+                        onDrop={(event: DragEvent) => drop(event, node.path)}
+                      >
+                        <div class="size-4 flex items-center justify-center text-icon-weak">
+                          <Icon name={expanded() ? "chevron-down" : "chevron-right"} size="small" />
+                        </div>
+                      </FileTreeNode>,
+                    )}
                   </Collapsible.Trigger>
                   <Collapsible.Content class="relative pt-0.5">
                     <div
@@ -441,6 +529,8 @@ export default function FileTree(props: {
                         active={props.active}
                         draggable={props.draggable}
                         onFileClick={props.onFileClick}
+                        onMove={props.onMove}
+                        onMenu={props.onMenu}
                         _filter={filter()}
                         _marks={marks()}
                         _deeps={deeps()}
@@ -452,51 +542,57 @@ export default function FileTree(props: {
                 </Collapsible>
               </Match>
               <Match when={node.type === "file"}>
-                <FileTreeNode
-                  node={node}
-                  level={level}
-                  active={props.active}
-                  nodeClass={props.nodeClass}
-                  draggable={draggable()}
-                  kinds={kinds()}
-                  marks={marks()}
-                  as="button"
-                  type="button"
-                  onClick={() => props.onFileClick?.(node)}
-                >
-                  <div class="w-4 shrink-0" />
-                  <Switch>
-                    <Match when={node.ignored}>
-                      <FileIcon
-                        node={node}
-                        class="size-4 filetree-icon filetree-icon--mono"
-                        style="color: var(--icon-weak-base)"
-                        mono
-                      />
-                    </Match>
-                    <Match when={active()}>
-                      <FileIcon
-                        node={node}
-                        class="size-4 filetree-icon filetree-icon--mono"
-                        style={kindTextColor(kind()!)}
-                        mono
-                      />
-                    </Match>
-                    <Match when={!node.ignored}>
-                      <span class="filetree-iconpair size-4">
+                {menu(
+                  node,
+                  <FileTreeNode
+                    node={node}
+                    level={level}
+                    active={props.active}
+                    nodeClass={props.nodeClass}
+                    draggable={draggable()}
+                    movable={movable()}
+                    kinds={kinds()}
+                    marks={marks()}
+                    as="button"
+                    type="button"
+                    onClick={() => props.onFileClick?.(node)}
+                    onDragOver={(event: DragEvent) => over(event, parent(node.path))}
+                    onDrop={(event: DragEvent) => drop(event, parent(node.path))}
+                  >
+                    <div class="w-4 shrink-0" />
+                    <Switch>
+                      <Match when={node.ignored}>
                         <FileIcon
                           node={node}
-                          class="size-4 filetree-icon filetree-icon--color opacity-0 group-hover/filetree:opacity-100"
-                        />
-                        <FileIcon
-                          node={node}
-                          class="size-4 filetree-icon filetree-icon--mono group-hover/filetree:opacity-0"
+                          class="size-4 filetree-icon filetree-icon--mono"
+                          style="color: var(--icon-weak-base)"
                           mono
                         />
-                      </span>
-                    </Match>
-                  </Switch>
-                </FileTreeNode>
+                      </Match>
+                      <Match when={active()}>
+                        <FileIcon
+                          node={node}
+                          class="size-4 filetree-icon filetree-icon--mono"
+                          style={kindTextColor(kind()!)}
+                          mono
+                        />
+                      </Match>
+                      <Match when={!node.ignored}>
+                        <span class="filetree-iconpair size-4">
+                          <FileIcon
+                            node={node}
+                            class="size-4 filetree-icon filetree-icon--color opacity-0 group-hover/filetree:opacity-100"
+                          />
+                          <FileIcon
+                            node={node}
+                            class="size-4 filetree-icon filetree-icon--mono group-hover/filetree:opacity-0"
+                            mono
+                          />
+                        </span>
+                      </Match>
+                    </Switch>
+                  </FileTreeNode>,
+                )}
               </Match>
             </Switch>
           )

@@ -1821,6 +1821,16 @@ export type FileWriteInput = {
   content: string
 }
 
+export type FileCreateInput = {
+  path: string
+  type: "file" | "directory"
+}
+
+export type FileMoveInput = {
+  from: string
+  to: string
+}
+
 export type File = {
   path: string
   added: number
@@ -1914,6 +1924,8 @@ export type FormatterStatus = {
   extensions: Array<string>
   enabled: boolean
 }
+
+export type FileDeleteInput = string
 
 export type GlobalHealthData = {
   body?: never
@@ -4141,6 +4153,28 @@ export type FindSymbolsResponses = {
 
 export type FindSymbolsResponse = FindSymbolsResponses[keyof FindSymbolsResponses]
 
+export type FileDeleteData = {
+  body?: never
+  path?: never
+  query: {
+    directory?: string
+    workspace?: string
+    path: string
+  }
+  url: "/file"
+}
+
+export type FileDeleteResponses = {
+  /**
+   * Deleted
+   */
+  200: {
+    ok: true
+  }
+}
+
+export type FileDeleteResponse = FileDeleteResponses[keyof FileDeleteResponses]
+
 export type FileListData = {
   body?: never
   path?: never
@@ -4160,6 +4194,27 @@ export type FileListResponses = {
 }
 
 export type FileListResponse = FileListResponses[keyof FileListResponses]
+
+export type FileCreateData = {
+  body?: FileCreateInput
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/file"
+}
+
+export type FileCreateResponses = {
+  /**
+   * Created
+   */
+  200: {
+    ok: true
+  }
+}
+
+export type FileCreateResponse = FileCreateResponses[keyof FileCreateResponses]
 
 export type FileReadData = {
   body?: never
@@ -4199,6 +4254,27 @@ export type FileWriteResponses = {
 }
 
 export type FileWriteResponse = FileWriteResponses[keyof FileWriteResponses]
+
+export type FileMoveData = {
+  body?: FileMoveInput
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/file/move"
+}
+
+export type FileMoveResponses = {
+  /**
+   * Moved
+   */
+  200: {
+    ok: true
+  }
+}
+
+export type FileMoveResponse = FileMoveResponses[keyof FileMoveResponses]
 
 export type FileStatusData = {
   body?: never

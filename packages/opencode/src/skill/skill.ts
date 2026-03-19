@@ -1,6 +1,7 @@
 import z from "zod"
 import path from "path"
 import os from "os"
+import fs from "fs/promises"
 import { Config } from "../config/config"
 import { Instance } from "../project/instance"
 import { NamedError } from "@opencode-ai/util/error"
@@ -217,6 +218,12 @@ export class SkillService extends ServiceMap.Service<SkillService, SkillService.
         if (writer) {
           const skills: Record<string, Skill.Info> = {}
           const skillDirs = new Set<string>()
+          const root = path.join(writer, ".skills")
+          try {
+            await fs.mkdir(root, { recursive: true })
+          } catch (error) {
+            log.warn("failed to initialize writer skill root", { root, error })
+          }
           const matches = await Glob.scan(WRITER_SKILL_PATTERN, {
             cwd: writer,
             absolute: true,

@@ -26,9 +26,11 @@ export function createFileTreeStore(options: TreeStoreOptions) {
   })
 
   const inflight = new Map<string, Promise<void>>()
+  const queued = new Set<string>()
 
   const reset = () => {
     inflight.clear()
+    queued.clear()
     setTree("node", reconcile({}))
     setTree("dir", reconcile({}))
     setTree("dir", "", { expanded: true })
@@ -47,7 +49,13 @@ export function createFileTreeStore(options: TreeStoreOptions) {
     if (!opts?.force && current?.loaded) return Promise.resolve()
 
     const pending = inflight.get(dir)
-    if (pending) return pending
+    if (pending) {
+      if (opts?.force) {
+        queued.add(dir)
+        return pending.then(() => inflight.get(dir) ?? Promise.resolve())
+      }
+      return pending
+    }
 
     setTree(
       "dir",
@@ -121,6 +129,9 @@ export function createFileTreeStore(options: TreeStoreOptions) {
       })
       .finally(() => {
         inflight.delete(dir)
+        if (queued.delete(dir)) {
+          void listDir(dir, { force: true })
+        }
       })
 
     inflight.set(dir, promise)

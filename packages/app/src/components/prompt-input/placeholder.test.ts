@@ -10,16 +10,17 @@ describe("promptPlaceholder", () => {
       commentCount: 0,
       example: "example",
       suggest: true,
+      hide: false,
       t,
     })
     expect(value).toBe("prompt.placeholder.shell")
   })
 
   test("returns summarize placeholders for comment context", () => {
-    expect(promptPlaceholder({ mode: "normal", commentCount: 1, example: "example", suggest: true, t })).toBe(
+    expect(promptPlaceholder({ mode: "normal", commentCount: 1, example: "example", suggest: true, hide: false, t })).toBe(
       "prompt.placeholder.summarizeComment",
     )
-    expect(promptPlaceholder({ mode: "normal", commentCount: 2, example: "example", suggest: true, t })).toBe(
+    expect(promptPlaceholder({ mode: "normal", commentCount: 2, example: "example", suggest: true, hide: false, t })).toBe(
       "prompt.placeholder.summarizeComments",
     )
   })
@@ -30,6 +31,7 @@ describe("promptPlaceholder", () => {
       commentCount: 0,
       example: "translated-example",
       suggest: true,
+      hide: false,
       t,
     })
     expect(value).toBe("prompt.placeholder.normal:translated-example")
@@ -41,8 +43,21 @@ describe("promptPlaceholder", () => {
       commentCount: 0,
       example: "translated-example",
       suggest: false,
+      hide: false,
       t,
     })
     expect(value).toBe("prompt.placeholder.simple")
+  })
+
+  test("returns empty placeholder when hidden", () => {
+    const value = promptPlaceholder({
+      mode: "normal",
+      commentCount: 0,
+      example: "translated-example",
+      suggest: true,
+      hide: true,
+      t,
+    })
+    expect(value).toBe("")
   })
 })

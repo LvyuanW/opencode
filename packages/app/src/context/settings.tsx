@@ -2,6 +2,7 @@ import { createStore, reconcile } from "solid-js/store"
 import { createEffect, createMemo } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { persisted } from "@/utils/persist"
+import { usePlatform } from "@/context/platform"
 
 export interface NotificationSettings {
   agent: boolean
@@ -111,7 +112,16 @@ function withFallback<T>(read: () => T | undefined, fallback: T) {
 export const { use: useSettings, provider: SettingsProvider } = createSimpleContext({
   name: "Settings",
   init: () => {
-    const [store, setStore, _, ready] = persisted("settings.v3", createStore<Settings>(defaultSettings))
+    const platform = usePlatform()
+    const mode = platform.platform === "web" ? "writer" : defaultSettings.general.workspaceMode
+    const init: Settings = {
+      ...defaultSettings,
+      general: {
+        ...defaultSettings.general,
+        workspaceMode: mode,
+      },
+    }
+    const [store, setStore, _, ready] = persisted("settings.v3", createStore<Settings>(init))
 
     createEffect(() => {
       if (typeof document === "undefined") return
@@ -124,7 +134,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         return store
       },
       general: {
-        workspaceMode: withFallback(() => store.general?.workspaceMode, defaultSettings.general.workspaceMode),
+        workspaceMode: withFallback(() => store.general?.workspaceMode, init.general.workspaceMode),
         setWorkspaceMode(value: WorkspaceMode) {
           setStore("general", "workspaceMode", value)
         },

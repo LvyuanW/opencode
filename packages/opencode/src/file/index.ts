@@ -339,6 +339,35 @@ export namespace File {
     })
   export type WriteInput = z.infer<typeof WriteInput>
 
+  export const CreateInput = z
+    .object({
+      path: z.string(),
+      type: z.enum(["file", "directory"]),
+    })
+    .meta({
+      ref: "FileCreateInput",
+    })
+  export type CreateInput = z.infer<typeof CreateInput>
+
+  export const DeleteInput = z
+    .object({
+      path: z.string(),
+    })
+    .meta({
+      ref: "FileDeleteInput",
+    })
+  export type DeleteInput = z.infer<typeof DeleteInput>
+
+  export const MoveInput = z
+    .object({
+      from: z.string(),
+      to: z.string(),
+    })
+    .meta({
+      ref: "FileMoveInput",
+    })
+  export type MoveInput = z.infer<typeof MoveInput>
+
   export const Event = {
     Edited: BusEvent.define(
       "file.edited",
@@ -368,6 +397,18 @@ export namespace File {
     return runPromiseInstance(FileService.use((s) => s.write(file, content)))
   }
 
+  export async function create(file: string, type: "file" | "directory") {
+    return runPromiseInstance(FileService.use((s) => s.create(file, type)))
+  }
+
+  export async function remove(file: string) {
+    return runPromiseInstance(FileService.use((s) => s.remove(file)))
+  }
+
+  export async function move(from: string, to: string) {
+    return runPromiseInstance(FileService.use((s) => s.move(from, to)))
+  }
+
   export async function search(input: { query: string; limit?: number; dirs?: boolean; type?: "file" | "directory" }) {
     return runPromiseInstance(FileService.use((s) => s.search(input)))
   }
@@ -380,6 +421,9 @@ export namespace FileService {
     readonly read: (file: string) => Effect.Effect<File.Content>
     readonly list: (dir?: string) => Effect.Effect<File.Node[]>
     readonly write: (file: string, content: string) => Effect.Effect<File.Content>
+    readonly create: (file: string, type: "file" | "directory") => Effect.Effect<void>
+    readonly remove: (file: string) => Effect.Effect<void>
+    readonly move: (from: string, to: string) => Effect.Effect<void>
     readonly search: (input: {
       query: string
       limit?: number
@@ -463,6 +507,23 @@ export class FileService extends ServiceMap.Service<FileService, FileService.Ser
       const getFiles = async () => {
         void kick()
         return cache
+      }
+
+      const pull = () => {
+        cache = { files: [], dirs: [] }
+        void kick()
+      }
+
+      const fullpath = (file: string) => {
+        if (!file) {
+          throw new Error("Invalid path")
+        }
+
+        const full = path.join(instance.directory, file)
+        if (!Instance.containsPath(full)) {
+          throw new Error(`Access denied: path escapes project directory`)
+        }
+        return full
       }
 
       const init = Effect.fn("FileService.init")(function* () {
@@ -641,11 +702,7 @@ export class FileService extends ServiceMap.Service<FileService, FileService.Ser
       const write = Effect.fn("FileService.write")(function* (file: string, content: string) {
         return yield* Effect.promise(async (): Promise<File.Content> => {
           using _ = log.time("write", { file })
-          const full = path.join(instance.directory, file)
-
-          if (!Instance.containsPath(full)) {
-            throw new Error(`Access denied: path escapes project directory`)
-          }
+          const full = fullpath(file)
 
           const exists = await Filesystem.exists(full)
           await Filesystem.write(full, content)
@@ -657,11 +714,105 @@ export class FileService extends ServiceMap.Service<FileService, FileService.Ser
             event: exists ? "change" : "add",
           })
           await LSP.touchFile(full, false).catch(() => {})
+          pull()
 
           return {
             type: "text",
             content,
           }
+        })
+      })
+
+      const create = Effect.fn("FileService.create")(function* (file: string, type: "file" | "directory") {
+        return yield* Effect.promise(async () => {
+          using _ = log.time("create", { file, type })
+          const full = fullpath(file)
+
+          if (await Filesystem.exists(full)) {
+            throw new Error(`Path already exists: ${file}`)
+          }
+
+          if (type === "directory") {
+            await fs.promises.mkdir(full, { recursive: true })
+            await Bus.publish(FileWatcher.Event.Updated, {
+              file: full,
+              event: "add",
+            })
+            pull()
+            return
+          }
+
+          await fs.promises.mkdir(path.dirname(full), { recursive: true })
+          await Filesystem.write(full, "")
+          await Bus.publish(File.Event.Edited, {
+            file: full,
+          })
+          await Bus.publish(FileWatcher.Event.Updated, {
+            file: full,
+            event: "add",
+          })
+          await LSP.touchFile(full, false).catch(() => {})
+          pull()
+        })
+      })
+
+      const remove = Effect.fn("FileService.remove")(function* (file: string) {
+        return yield* Effect.promise(async () => {
+          using _ = log.time("remove", { file })
+          const full = fullpath(file)
+
+          if (!(await Filesystem.exists(full))) {
+            throw new Error(`Path not found: ${file}`)
+          }
+
+          await fs.promises.rm(full, { recursive: true, force: false })
+          await Bus.publish(FileWatcher.Event.Updated, {
+            file: full,
+            event: "unlink",
+          })
+          pull()
+        })
+      })
+
+      const move = Effect.fn("FileService.move")(function* (from: string, to: string) {
+        return yield* Effect.promise(async () => {
+          using _ = log.time("move", { from, to })
+          const fromfull = fullpath(from)
+          const tofull = fullpath(to)
+          if (fromfull === tofull) return
+
+          const stat = await fs.promises.stat(fromfull).catch(() => undefined)
+          if (!stat) throw new Error(`Path not found: ${from}`)
+
+          if (await Filesystem.exists(tofull)) {
+            throw new Error(`Path already exists: ${to}`)
+          }
+
+          const frompath = from.replaceAll("\\", "/").replace(/\/+$/, "")
+          const topath = to.replaceAll("\\", "/").replace(/\/+$/, "")
+          if (stat.isDirectory() && (topath === frompath || topath.startsWith(frompath + "/"))) {
+            throw new Error("Cannot move directory into itself")
+          }
+
+          await fs.promises.mkdir(path.dirname(tofull), { recursive: true })
+          await fs.promises.rename(fromfull, tofull).catch(async (err) => {
+            if ((err as NodeJS.ErrnoException).code !== "EXDEV") throw err
+            await fs.promises.cp(fromfull, tofull, { recursive: true, errorOnExist: true, force: false })
+            await fs.promises.rm(fromfull, { recursive: true, force: false })
+          })
+
+          await Bus.publish(FileWatcher.Event.Updated, {
+            file: fromfull,
+            event: "unlink",
+          })
+          await Bus.publish(FileWatcher.Event.Updated, {
+            file: tofull,
+            event: "add",
+          })
+          if (!stat.isDirectory()) {
+            await LSP.touchFile(tofull, false).catch(() => {})
+          }
+          pull()
         })
       })
 
@@ -685,6 +836,10 @@ export class FileService extends ServiceMap.Service<FileService, FileService.Ser
 
           if (!Instance.containsPath(resolved)) {
             throw new Error(`Access denied: path escapes project directory`)
+          }
+
+          if (!dir && !(await Filesystem.exists(resolved))) {
+            await fs.promises.mkdir(resolved, { recursive: true })
           }
 
           const nodes: File.Node[] = []
@@ -763,7 +918,7 @@ export class FileService extends ServiceMap.Service<FileService, FileService.Ser
 
       log.info("init")
 
-      return FileService.of({ init, status, read, list, write, search })
+      return FileService.of({ init, status, read, list, write, create, remove, move, search })
     }),
   )
 }

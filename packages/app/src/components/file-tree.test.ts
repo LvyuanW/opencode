@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, mock, test } from "bun:test"
 let shouldListRoot: typeof import("./file-tree").shouldListRoot
 let shouldListExpanded: typeof import("./file-tree").shouldListExpanded
 let dirsToExpand: typeof import("./file-tree").dirsToExpand
+let dragValue: typeof import("./file-tree").dragValue
 
 beforeAll(async () => {
   mock.module("@solidjs/router", () => ({
@@ -26,6 +27,16 @@ beforeAll(async () => {
       Content: (props: { children?: unknown }) => props.children,
     },
   }))
+  mock.module("@opencode-ai/ui/context-menu", () => ({
+    ContextMenu: {
+      Trigger: (props: { children?: unknown }) => props.children,
+      Portal: (props: { children?: unknown }) => props.children,
+      Content: (props: { children?: unknown }) => props.children,
+      Item: (props: { children?: unknown }) => props.children,
+      ItemLabel: (props: { children?: unknown }) => props.children,
+      Separator: () => null,
+    },
+  }))
   mock.module("@opencode-ai/ui/file-icon", () => ({ FileIcon: () => null }))
   mock.module("@opencode-ai/ui/icon", () => ({ Icon: () => null }))
   mock.module("@opencode-ai/ui/tooltip", () => ({ Tooltip: (props: { children?: unknown }) => props.children }))
@@ -33,6 +44,7 @@ beforeAll(async () => {
   shouldListRoot = mod.shouldListRoot
   shouldListExpanded = mod.shouldListExpanded
   dirsToExpand = mod.dirsToExpand
+  dragValue = mod.dragValue
 })
 
 describe("file tree fetch discipline", () => {
@@ -74,5 +86,12 @@ describe("file tree fetch discipline", () => {
 
     expect(second).toEqual([])
     expect(dirsToExpand({ level: 1, filter, expanded: () => false })).toEqual([])
+  })
+
+  test("drag path falls back to active drag when dragover data is empty", () => {
+    expect(dragValue({ raw: "drafts/a.md", text: "file:drafts/b.md", drag: "drafts/c.md" })).toBe("drafts/a.md")
+    expect(dragValue({ text: "file:drafts/b.md", drag: "drafts/c.md" })).toBe("drafts/b.md")
+    expect(dragValue({ drag: "drafts/c.md" })).toBe("drafts/c.md")
+    expect(dragValue({ text: "hello", drag: "" })).toBe("")
   })
 })

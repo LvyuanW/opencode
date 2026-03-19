@@ -31,7 +31,12 @@ import type {
   ExperimentalWorkspaceListResponses,
   ExperimentalWorkspaceRemoveErrors,
   ExperimentalWorkspaceRemoveResponses,
+  FileCreateInput,
+  FileCreateResponses,
+  FileDeleteResponses,
   FileListResponses,
+  FileMoveInput,
+  FileMoveResponses,
   FilePartInput,
   FilePartSource,
   FileReadResponses,
@@ -2749,6 +2754,38 @@ export class Find extends HeyApiClient {
 
 export class File extends HeyApiClient {
   /**
+   * Delete file or directory
+   *
+   * Delete a file or directory from the project.
+   */
+  public delete<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      workspace?: string
+      path: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { in: "query", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<FileDeleteResponses, unknown, ThrowOnError>({
+      url: "/file",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * List files
    *
    * List files and directories in a specified path.
@@ -2777,6 +2814,43 @@ export class File extends HeyApiClient {
       url: "/file",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Create file or directory
+   *
+   * Create a file or directory in the project.
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      fileCreateInput?: FileCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { key: "fileCreateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<FileCreateResponses, unknown, ThrowOnError>({
+      url: "/file",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -2839,6 +2913,43 @@ export class File extends HeyApiClient {
     )
     return (options?.client ?? this.client).put<FileWriteResponses, unknown, ThrowOnError>({
       url: "/file/content",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Move file or directory
+   *
+   * Move or rename a file or directory in the project.
+   */
+  public move<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      workspace?: string
+      fileMoveInput?: FileMoveInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "workspace" },
+            { key: "fileMoveInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<FileMoveResponses, unknown, ThrowOnError>({
+      url: "/file/move",
       ...options,
       ...params,
       headers: {

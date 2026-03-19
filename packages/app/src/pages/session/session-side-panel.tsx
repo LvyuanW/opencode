@@ -1,12 +1,17 @@
 import { For, Match, Show, Switch, createEffect, createMemo, onCleanup, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createMediaQuery } from "@solid-primitives/media"
-import type { FileDiff } from "@opencode-ai/sdk/v2"
+import type { FileDiff, FileNode } from "@opencode-ai/sdk/v2"
 import { Tabs } from "@opencode-ai/ui/tabs"
+import { ContextMenu } from "@opencode-ai/ui/context-menu"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Mark } from "@opencode-ai/ui/logo"
+import { Dialog } from "@opencode-ai/ui/dialog"
+import { Button } from "@opencode-ai/ui/button"
+import { TextField } from "@opencode-ai/ui/text-field"
+import { showToast } from "@opencode-ai/ui/toast"
 import { DragDropProvider, DragDropSensors, DragOverlay, SortableProvider, closestCenter } from "@thisbeyond/solid-dnd"
 import type { DragEvent } from "@thisbeyond/solid-dnd"
 import { ConstrainDragYAxis, getDraggableId } from "@/utils/solid-dnd"
@@ -242,6 +247,165 @@ export function SessionSidePanel(props: {
     })
   })
 
+  const parent = (path: string) => {
+    const idx = path.lastIndexOf("/")
+    if (idx === -1) return ""
+    return path.slice(0, idx)
+  }
+
+  const leaf = (path: string) => {
+    const idx = path.lastIndexOf("/")
+    if (idx === -1) return path
+    return path.slice(idx + 1)
+  }
+
+  const join = (dir: string, name: string) => (dir ? `${dir}/${name}` : name)
+
+  const clean = (value: string) => value.trim().replaceAll("\\", "/").replace(/^\/+/, "").replace(/\/+$/, "")
+
+  function DialogCreate(props: { dir: string; type: "file" | "directory" }) {
+    const [store, setStore] = createStore({ name: "", busy: false })
+    const title = createMemo(() =>
+      props.type === "file" ? language.t("session.files.action.newFile") : language.t("session.files.action.newFolder"),
+    )
+    const placeholder = createMemo(() =>
+      props.type === "file"
+        ? language.t("session.files.dialog.newFile.placeholder")
+        : language.t("session.files.dialog.newFolder.placeholder"),
+    )
+
+    const submit = async (event?: SubmitEvent) => {
+      event?.preventDefault()
+      const value = clean(store.name)
+      if (!value) return
+      if (value.split("/").some((part) => part === "." || part === ".." || part === "")) {
+        showToast({
+          variant: "error",
+          title: language.t("common.requestFailed"),
+          description: language.t("session.files.dialog.invalidName"),
+        })
+        return
+      }
+
+      const path = join(props.dir, value)
+      setStore("busy", true)
+      await file
+        .create(path, props.type)
+        .then((next) => {
+          if (props.type === "file") {
+            openTab(file.tab(next))
+          }
+          if (props.type === "directory") {
+            file.tree.expand(next)
+          }
+          dialog.close()
+        })
+        .finally(() => {
+          setStore("busy", false)
+        })
+    }
+
+    return (
+      <Dialog title={title()} fit>
+        <form onSubmit={submit} class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
+          <TextField
+            autofocus
+            value={store.name}
+            label={language.t("session.files.dialog.name")}
+            placeholder={placeholder()}
+            onChange={(value) => setStore("name", value)}
+          />
+          <div class="flex justify-end gap-2">
+            <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
+              {language.t("common.cancel")}
+            </Button>
+            <Button type="submit" variant="primary" size="large" disabled={store.busy || !clean(store.name)}>
+              {language.t("session.files.dialog.create")}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+    )
+  }
+
+  function DialogDelete(props: { node: FileNode }) {
+    const [busy, setBusy] = createStore({ value: false })
+    const title = createMemo(() =>
+      props.node.type === "file"
+        ? language.t("session.files.action.deleteFile")
+        : language.t("session.files.action.deleteFolder"),
+    )
+    const text = createMemo(() =>
+      props.node.type === "file"
+        ? language.t("session.files.dialog.deleteFile.confirm", { name: props.node.name })
+        : language.t("session.files.dialog.deleteFolder.confirm", { name: props.node.name }),
+    )
+
+    const remove = async () => {
+      setBusy("value", true)
+      await file
+        .remove(props.node.path)
+        .then(() => {
+          dialog.close()
+        })
+        .finally(() => {
+          setBusy("value", false)
+        })
+    }
+
+    return (
+      <Dialog title={title()} fit>
+        <div class="flex flex-col gap-4 pl-6 pr-2.5 pb-3">
+          <div class="text-14-regular text-text-strong">{text()}</div>
+          <div class="flex justify-end gap-2">
+            <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
+              {language.t("common.cancel")}
+            </Button>
+            <Button type="button" variant="primary" size="large" disabled={busy.value} onClick={remove}>
+              {language.t("common.delete")}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    )
+  }
+
+  const openCreate = (dir: string, type: "file" | "directory") => {
+    dialog.show(() => <DialogCreate dir={dir} type={type} />)
+  }
+
+  const openDelete = (node: FileNode) => {
+    dialog.show(() => <DialogDelete node={node} />)
+  }
+
+  const openNodeMenu = (node: FileNode) => {
+    const dir = node.type === "directory" ? node.path : parent(node.path)
+    return (
+      <>
+        <ContextMenu.Item onSelect={() => openCreate(dir, "file")}>
+          <ContextMenu.ItemLabel>{language.t("session.files.action.newFile")}</ContextMenu.ItemLabel>
+        </ContextMenu.Item>
+        <ContextMenu.Item onSelect={() => openCreate(dir, "directory")}>
+          <ContextMenu.ItemLabel>{language.t("session.files.action.newFolder")}</ContextMenu.ItemLabel>
+        </ContextMenu.Item>
+        <ContextMenu.Separator />
+        <ContextMenu.Item onSelect={() => openDelete(node)}>
+          <ContextMenu.ItemLabel>
+            {node.type === "file"
+              ? language.t("session.files.action.deleteFile")
+              : language.t("session.files.action.deleteFolder")}
+          </ContextMenu.ItemLabel>
+        </ContextMenu.Item>
+      </>
+    )
+  }
+
+  const moveTreeNode = (from: string, to: string) => {
+    const target = join(to, leaf(from))
+    if (target === from) return
+    void file.move(from, target)
+  }
+
   return (
     <Show when={isDesktop()}>
       <aside
@@ -437,7 +601,7 @@ export function SessionSidePanel(props: {
                   </Tabs.Trigger>
                 </Tabs.List>
                 <Show when={reviewTab()}>
-                  <Tabs.Content value="changes" class="bg-background-stronger px-3 py-0">
+                  <Tabs.Content value="changes" class="h-full bg-background-stronger px-3 py-0">
                     <Switch>
                       <Match when={reviewCount() > 0}>
                         <Show
@@ -451,7 +615,7 @@ export function SessionSidePanel(props: {
                         >
                           <FileTree
                             path=""
-                            class="pt-3"
+                            class="pt-3 min-h-full"
                             allowed={diffFiles()}
                             kinds={kinds()}
                             draggable={false}
@@ -466,21 +630,57 @@ export function SessionSidePanel(props: {
                     </Switch>
                   </Tabs.Content>
                 </Show>
-                <Tabs.Content value="all" class="bg-background-stronger px-3 py-0">
-                  <Switch>
-                    <Match when={nofiles()}>
-                      {empty(language.t(fileKey("session.files.empty", "session.files.empty.writer")))}
-                    </Match>
-                    <Match when={true}>
-                      <FileTree
-                        path=""
-                        class="pt-3"
-                        modified={diffFiles()}
-                        kinds={kinds()}
-                        onFileClick={(node) => openTab(file.tab(node.path))}
-                      />
-                    </Match>
-                  </Switch>
+                <Tabs.Content value="all" class="h-full bg-background-stronger px-3 py-0">
+                  <Show
+                    when={props.writer}
+                    fallback={
+                      <Switch>
+                        <Match when={nofiles()}>
+                          {empty(language.t(fileKey("session.files.empty", "session.files.empty.writer")))}
+                        </Match>
+                        <Match when={true}>
+                          <FileTree
+                            path=""
+                            class="pt-3 min-h-full"
+                            modified={diffFiles()}
+                            kinds={kinds()}
+                            onFileClick={(node) => openTab(file.tab(node.path))}
+                          />
+                        </Match>
+                      </Switch>
+                    }
+                  >
+                    <ContextMenu modal={false}>
+                      <ContextMenu.Trigger class="block h-full min-h-full">
+                        <Switch>
+                          <Match when={nofiles()}>
+                            {empty(language.t(fileKey("session.files.empty", "session.files.empty.writer")))}
+                          </Match>
+                          <Match when={true}>
+                            <FileTree
+                              path=""
+                              class="pt-3 min-h-full"
+                              modified={diffFiles()}
+                              kinds={kinds()}
+                              onFileClick={(node) => openTab(file.tab(node.path))}
+                              onMove={moveTreeNode}
+                              onMenu={openNodeMenu}
+                            />
+                          </Match>
+                        </Switch>
+                      </ContextMenu.Trigger>
+                      <ContextMenu.Portal>
+                        <ContextMenu.Content>
+                          <ContextMenu.Item onSelect={() => openCreate("", "file")}>
+                            <ContextMenu.ItemLabel>{language.t("session.files.action.newFile")}</ContextMenu.ItemLabel>
+                          </ContextMenu.Item>
+                          <ContextMenu.Item onSelect={() => openCreate("", "directory")}>
+                            <ContextMenu.ItemLabel>{language.t("session.files.action.newFolder")}</ContextMenu.ItemLabel>
+                          </ContextMenu.Item>
+                        </ContextMenu.Content>
+                      </ContextMenu.Portal>
+                    </ContextMenu>
+                  </Show>
                 </Tabs.Content>
               </Tabs>
             </div>

@@ -196,6 +196,90 @@ export const FileRoutes = lazy(() =>
         return c.json(content)
       },
     )
+    .post(
+      "/file",
+      describeRoute({
+        summary: "Create file or directory",
+        description: "Create a file or directory in the project.",
+        operationId: "file.create",
+        responses: {
+          200: {
+            description: "Created",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    ok: z.literal(true),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      validator("json", File.CreateInput),
+      async (c) => {
+        const body = c.req.valid("json")
+        await File.create(body.path, body.type)
+        return c.json({ ok: true as const })
+      },
+    )
+    .delete(
+      "/file",
+      describeRoute({
+        summary: "Delete file or directory",
+        description: "Delete a file or directory from the project.",
+        operationId: "file.delete",
+        responses: {
+          200: {
+            description: "Deleted",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    ok: z.literal(true),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      validator("query", File.DeleteInput),
+      async (c) => {
+        const input = c.req.valid("query")
+        await File.remove(input.path)
+        return c.json({ ok: true as const })
+      },
+    )
+    .post(
+      "/file/move",
+      describeRoute({
+        summary: "Move file or directory",
+        description: "Move or rename a file or directory in the project.",
+        operationId: "file.move",
+        responses: {
+          200: {
+            description: "Moved",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    ok: z.literal(true),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      validator("json", File.MoveInput),
+      async (c) => {
+        const body = c.req.valid("json")
+        await File.move(body.from, body.to)
+        return c.json({ ok: true as const })
+      },
+    )
     .get(
       "/file/status",
       describeRoute({

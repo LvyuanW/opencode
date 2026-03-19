@@ -15,6 +15,22 @@ type WatcherOps = {
   refreshDir: (path: string) => void
 }
 
+const cut = (input: string) => {
+  const sep = input.includes("\\") ? "\\" : "/"
+  const parts = input.split(/[\\/]/)
+  parts.pop()
+  return parts.join(sep)
+}
+
+const up = (input: string, has: (path: string) => boolean) => {
+  let dir = cut(input)
+  while (true) {
+    if (has(dir)) return dir
+    if (!dir) return
+    dir = cut(dir)
+  }
+}
+
 export function invalidateFromWatcher(event: WatcherEvent, ops: WatcherOps) {
   if (event.type !== "file.watcher.updated") return
   const props =
@@ -46,8 +62,7 @@ export function invalidateFromWatcher(event: WatcherEvent, ops: WatcherOps) {
   }
   if (kind !== "add" && kind !== "unlink") return
 
-  const parent = path.split("/").slice(0, -1).join("/")
-  if (!ops.isDirLoaded(parent)) return
-
-  ops.refreshDir(parent)
+  const dir = up(path, ops.isDirLoaded)
+  if (dir === undefined) return
+  ops.refreshDir(dir)
 }

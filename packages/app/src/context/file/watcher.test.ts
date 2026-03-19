@@ -58,6 +58,54 @@ describe("file watcher invalidation", () => {
     expect(loads).toEqual(["src/open.ts"])
   })
 
+  test("refreshes nearest loaded ancestor on nested add", () => {
+    const refresh: string[] = []
+
+    invalidateFromWatcher(
+      {
+        type: "file.watcher.updated",
+        properties: {
+          file: "docs/act-1/scene.md",
+          event: "add",
+        },
+      },
+      {
+        normalize: (input) => input,
+        hasFile: () => false,
+        loadFile: () => {},
+        node: () => undefined,
+        isDirLoaded: (path) => path === "",
+        refreshDir: (path) => refresh.push(path),
+      },
+    )
+
+    expect(refresh).toEqual([""])
+  })
+
+  test("walks backslash paths to loaded ancestor", () => {
+    const refresh: string[] = []
+
+    invalidateFromWatcher(
+      {
+        type: "file.watcher.updated",
+        properties: {
+          file: "docs\\act-1\\scene.md",
+          event: "add",
+        },
+      },
+      {
+        normalize: (input) => input,
+        hasFile: () => false,
+        loadFile: () => {},
+        node: () => undefined,
+        isDirLoaded: (path) => path === "docs",
+        refreshDir: (path) => refresh.push(path),
+      },
+    )
+
+    expect(refresh).toEqual(["docs"])
+  })
+
   test("refreshes only changed loaded directory nodes", () => {
     const refresh: string[] = []
 

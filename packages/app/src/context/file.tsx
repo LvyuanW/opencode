@@ -49,6 +49,32 @@ function errorMessage(error: unknown, fallback: string) {
   return fallback
 }
 
+function ensureOk(value: unknown) {
+  if (!value || typeof value !== "object") {
+    throw new Error("Unexpected response")
+  }
+  if (!("ok" in value)) {
+    throw new Error("Unexpected response")
+  }
+  if (value.ok !== true) {
+    throw new Error("Unexpected response")
+  }
+}
+
+function legacy(error: unknown) {
+  const msg = errorMessage(error, "").trim()
+  if (!msg) return false
+  if (msg === "Unexpected response") return true
+  if (/^<!doctype/i.test(msg)) return true
+  if (/^<html/i.test(msg)) return true
+  if (/^Not Found$/i.test(msg)) return true
+  return /^Cannot (GET|POST|PUT|DELETE|PATCH)\b/i.test(msg)
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
 export const { use: useFile, provider: FileProvider } = createSimpleContext({
   name: "File",
   gate: false,
@@ -229,6 +255,298 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
         () => [],
       )
 
+    const parent = (file: string) => {
+      const clean = file.replace(/\/+$/, "")
+      const idx = clean.lastIndexOf("/")
+      if (idx === -1) return ""
+      return clean.slice(0, idx)
+    }
+
+    const hit = (from: string, target: string) => target === from || target.startsWith(from + "/")
+    const map = (from: string, to: string, target: string) => {
+      if (!hit(from, target)) return target
+      return to + target.slice(from.length)
+    }
+
+    const refresh = (...list: string[]) => {
+      const set = new Set(list.map((x) => path.normalizeDir(x)))
+      return Promise.all([...set].map((item) => tree.listDir(item, { force: true }))).then(() => {})
+    }
+
+    const seen = async (file: string, type?: "file" | "directory") => {
+      await refresh(parent(file))
+      const item = tree.node(file)
+      if (!item) return false
+      if (!type) return true
+      return item.type === type
+    }
+
+    const gone = async (file: string) => {
+      await refresh(parent(file))
+      return !tree.node(file)
+    }
+
+    const moved = async (from: string, to: string) => {
+      await refresh(parent(from), parent(to))
+      return !tree.node(from) && !!tree.node(to)
+    }
+
+    const ops = {
+      create: `
+        import { mkdir, stat, writeFile } from "node:fs/promises"
+        import path from "node:path"
+
+        const miss = (err) => {
+          if (!err || typeof err !== "object" || !("code" in err) || err.code !== "ENOENT") throw err
+        }
+
+        const file = process.argv[1]
+        const type = process.argv[2]
+
+        await stat(file).then(() => {
+          throw new Error(\`Path already exists: \${file}\`)
+        }, miss)
+
+        if (type === "directory") {
+          await mkdir(file, { recursive: true })
+        }
+
+        if (type !== "directory") {
+          await mkdir(path.dirname(file), { recursive: true })
+          await writeFile(file, "", { flag: "wx" })
+        }
+      `,
+      remove: `
+        import { rm } from "node:fs/promises"
+
+        await rm(process.argv[1], { recursive: true, force: false })
+      `,
+      move: `
+        import { cp, mkdir, rename, rm, stat } from "node:fs/promises"
+        import path from "node:path"
+
+        const miss = (err) => {
+          if (!err || typeof err !== "object" || !("code" in err) || err.code !== "ENOENT") throw err
+        }
+
+        const swap = (err) => !!err && typeof err === "object" && "code" in err && err.code === "EXDEV"
+        const from = process.argv[1]
+        const to = process.argv[2]
+        const info = await stat(from)
+
+        await stat(to).then(() => {
+          throw new Error(\`Path already exists: \${to}\`)
+        }, miss)
+
+        const src = from.replaceAll("\\\\", "/").replace(/\\/+$/, "")
+        const dst = to.replaceAll("\\\\", "/").replace(/\\/+$/, "")
+        if (info.isDirectory() && (dst === src || dst.startsWith(src + "/"))) {
+          throw new Error("Cannot move directory into itself")
+        }
+
+        await mkdir(path.dirname(to), { recursive: true })
+        await rename(from, to).catch(async (err) => {
+          if (!swap(err)) throw err
+          await cp(from, to, { recursive: true, errorOnExist: true, force: false })
+          await rm(from, { recursive: true, force: false })
+        })
+      `,
+    }
+
+    const run = async (code: string, args: string[], test: () => Promise<boolean>) => {
+      const pty = await sdk.client.pty.create({
+        command: "bun",
+        args: ["-e", code, ...args],
+        title: "File",
+      })
+      const id = pty.data?.id
+      if (!id) throw new Error(language.t("error.chain.unknown"))
+
+      const end = Date.now() + 8000
+      while (Date.now() < end) {
+        if (await test()) return
+        const status = await sdk.client.pty
+          .get({ ptyID: id })
+          .then((x) => x.data?.status)
+          .catch(() => "exited")
+        if (status !== "running") break
+        await wait(120)
+      }
+
+      if (await test()) return
+      await sdk.client.pty.remove({ ptyID: id }).catch(() => {})
+      throw new Error(language.t("error.chain.unknown"))
+    }
+
+    const shim = {
+      async create(file: string, type: "file" | "directory") {
+        if (await seen(file)) throw new Error(`Path already exists: ${file}`)
+        await run(ops.create, [file, type], () => seen(file, type))
+      },
+      async remove(file: string) {
+        if (!(await seen(file))) throw new Error(`Path not found: ${file}`)
+        await run(ops.remove, [file], () => gone(file))
+      },
+      async move(from: string, to: string) {
+        if (!(await seen(from))) throw new Error(`Path not found: ${from}`)
+        if (await seen(to)) throw new Error(`Path already exists: ${to}`)
+        await run(ops.move, [from, to], () => moved(from, to))
+      },
+    }
+
+    const route = (input: Promise<void>, fix: () => Promise<void>) =>
+      input.catch(async (error) => {
+        if (!legacy(error)) throw error
+        await fix()
+      })
+
+    const create = (input: string, type: "file" | "directory") => {
+      const file = path.normalize(input)
+      if (!file) {
+        const err = new Error(language.t("error.chain.unknown"))
+        showToast({
+          variant: "error",
+          title: language.t("common.requestFailed"),
+          description: err.message,
+        })
+        return Promise.reject(err)
+      }
+
+      return route(
+        sdk.client.file.create({ fileCreateInput: { path: file, type } }).then((x) => {
+          ensureOk(x.data)
+        }),
+        () => shim.create(file, type),
+      )
+        .then(async () => {
+          if (type === "file") ensure(file)
+          await refresh(parent(file))
+          return file
+        })
+        .catch((e) => {
+          const message = errorMessage(e, language.t("error.chain.unknown"))
+          showToast({
+            variant: "error",
+            title: language.t("common.requestFailed"),
+            description: message,
+          })
+          throw e
+        })
+    }
+
+    const remove = (input: string) => {
+      const file = path.normalize(input)
+      if (!file) return Promise.resolve()
+
+      return route(
+        sdk.client.file.delete({ path: file }).then((x) => {
+          ensureOk(x.data)
+        }),
+        () => shim.remove(file),
+      )
+        .then(() => {
+          const all = tabs.all().slice()
+          for (const tab of all) {
+            const target = path.pathFromTab(tab)
+            if (!target || !hit(file, target)) continue
+            tabs.close(tab)
+          }
+
+          setStore(
+            "file",
+            produce((draft) => {
+              for (const key of Object.keys(draft)) {
+                if (!hit(file, key)) continue
+                removeFileContentBytes(key)
+                delete draft[key]
+              }
+            }),
+          )
+
+          return refresh(parent(file))
+        })
+        .catch((e) => {
+          const message = errorMessage(e, language.t("error.chain.unknown"))
+          showToast({
+            variant: "error",
+            title: language.t("common.requestFailed"),
+            description: message,
+          })
+          throw e
+        })
+    }
+
+    const move = (fromInput: string, toInput: string) => {
+      const from = path.normalize(fromInput)
+      const to = path.normalize(toInput)
+      if (!from || !to || from === to) return Promise.resolve()
+
+      return route(
+        sdk.client.file.move({ fileMoveInput: { from, to } }).then((x) => {
+          ensureOk(x.data)
+        }),
+        () => shim.move(from, to),
+      )
+        .then(() => {
+          const active = tabs.active()
+          const all = tabs.all().map((tab) => {
+            const target = path.pathFromTab(tab)
+            if (!target) return tab
+            return path.tab(map(from, to, target))
+          })
+          const next: string[] = []
+          const seen = new Set<string>()
+          for (const tab of all) {
+            if (seen.has(tab)) continue
+            seen.add(tab)
+            next.push(tab)
+          }
+          tabs.setAll(next)
+
+          if (active) {
+            const target = path.pathFromTab(active)
+            if (target) tabs.setActive(path.tab(map(from, to, target)))
+          }
+
+          const updates: { from: string; to: string; content?: FileState["content"] }[] = []
+          setStore(
+            "file",
+            produce((draft) => {
+              for (const key of Object.keys(draft)) {
+                if (!hit(from, key)) continue
+                const next = map(from, to, key)
+                const item = draft[key]
+                delete draft[key]
+                if (!item) continue
+                draft[next] = {
+                  ...item,
+                  path: next,
+                  name: getFilename(next),
+                }
+                updates.push({ from: key, to: next, content: item.content })
+              }
+            }),
+          )
+
+          for (const item of updates) {
+            removeFileContentBytes(item.from)
+            if (!item.content) continue
+            touchFileContent(item.to, approxBytes(item.content))
+          }
+
+          return refresh(parent(from), parent(to)).then(() => to)
+        })
+        .catch((e) => {
+          const message = errorMessage(e, language.t("error.chain.unknown"))
+          showToast({
+            variant: "error",
+            title: language.t("common.requestFailed"),
+            description: message,
+          })
+          throw e
+        })
+    }
+
     const stop = sdk.event.listen((e) => {
       invalidateFromWatcher(e.details, {
         normalize: path.normalize,
@@ -297,6 +615,9 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       get,
       load,
       write,
+      create,
+      remove,
+      move,
       scrollTop,
       scrollLeft,
       setScrollTop,

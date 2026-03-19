@@ -129,6 +129,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const platform = usePlatform()
   const settings = useSettings()
   const { params, tabs, view } = useSessionLayout()
+  let formRef!: HTMLFormElement
   let editorRef!: HTMLDivElement
   let fileInputRef: HTMLInputElement | undefined
   let scrollRef!: HTMLDivElement
@@ -366,6 +367,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       commentCount: commentCount(),
       example: suggest() ? example() : "",
       suggest: suggest(),
+      hide: writer(),
       t: (key, params) => language.t(key as Parameters<typeof language.t>[0], params as never),
     }),
   )
@@ -1100,6 +1102,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const { addAttachment, removeAttachment, handlePaste } = createPromptAttachments({
+    root: () => formRef,
     editor: () => editorRef,
     isDialogActive: () => !!dialog.active,
     setDraggingType: (type) => setStore("draggingType", type),
@@ -1323,6 +1326,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         t={(key) => language.t(key as Parameters<typeof language.t>[0])}
       />
       <DockShellForm
+        ref={formRef}
         data-writer-mode={writer() ? "true" : "false"}
         onSubmit={handleSubmit}
         classList={{
@@ -1429,7 +1433,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               }}
               style={{ "padding-bottom": space }}
             />
-            <Show when={!prompt.dirty()}>
+            <Show when={!prompt.dirty() && placeholder()}>
               <div
                 data-component="prompt-placeholder"
                 class="absolute top-0 inset-x-0 pl-3 pr-2 pt-2 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate"

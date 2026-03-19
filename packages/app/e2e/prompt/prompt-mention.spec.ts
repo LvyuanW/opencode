@@ -1,26 +1,39 @@
+import { base64Decode } from "@opencode-ai/util/encode"
+import { slugFromUrl } from "../actions"
 import { test, expect } from "../fixtures"
 import { promptSelector } from "../selectors"
+import { createSdk } from "../utils"
 
-test("smoke @mention inserts file pill token", async ({ page, gotoSession }) => {
-  await gotoSession()
+const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-  await page.locator(promptSelector).click()
-  const sep = process.platform === "win32" ? "\\" : "/"
-  const file = ["packages", "app", "package.json"].join(sep)
-  const filePattern = /packages[\\/]+app[\\/]+\s*package\.json/
+test("smoke @mention inserts file pill token", async ({ page, withProject }) => {
+  await withProject(async ({ gotoSession }) => {
+    await gotoSession()
 
-  await page.keyboard.type(`@${file}`)
+    const slug = slugFromUrl(page.url())
+    if (!slug) throw new Error("Missing project slug in url")
 
-  const suggestion = page.getByRole("button", { name: filePattern }).first()
-  await expect(suggestion).toBeVisible()
-  await suggestion.hover()
+    const dir = base64Decode(slug)
+    const sdk = createSdk(dir)
+    const file = `mention-file-${Date.now()}.txt`
+    const pattern = new RegExp(escape(file))
 
-  await page.keyboard.press("Tab")
+    await sdk.file.create({ fileCreateInput: { path: file, type: "file" } })
 
-  const pill = page.locator(`${promptSelector} [data-type="file"]`).first()
-  await expect(pill).toBeVisible()
-  await expect(pill).toHaveAttribute("data-path", filePattern)
+    await page.locator(promptSelector).click()
+    await page.keyboard.type(`@${file}`)
 
-  await page.keyboard.type(" ok")
-  await expect(page.locator(promptSelector)).toContainText("ok")
+    const suggestion = page.getByRole("button", { name: pattern }).first()
+    await expect(suggestion).toBeVisible()
+    await suggestion.hover()
+
+    await page.keyboard.press("Tab")
+
+    const pill = page.locator(`${promptSelector} [data-type="file"]`).first()
+    await expect(pill).toBeVisible()
+    await expect(pill).toHaveAttribute("data-path", file)
+
+    await page.keyboard.type(" ok")
+    await expect(page.locator(promptSelector)).toContainText("ok")
+  })
 })

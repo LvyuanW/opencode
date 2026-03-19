@@ -16,7 +16,7 @@ test("dropping an image file adds an attachment", async ({ page, gotoSession }) 
     return dt
   }, png)
 
-  await page.dispatchEvent("body", "drop", { dataTransfer: dt })
+  await page.dispatchEvent(promptSelector, "drop", { dataTransfer: dt })
 
   const img = page.locator('img[alt="drop.png"]').first()
   await expect(img).toBeVisible()
