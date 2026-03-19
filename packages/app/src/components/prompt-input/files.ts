@@ -73,6 +73,10 @@ export const ACCEPTED_FILE_TYPES = [
   ".zsh",
 ]
 
+export const TEXT_FILE_TYPES = ACCEPTED_FILE_TYPES.filter(
+  (item) => item !== "application/pdf" && !IMAGE_MIMES.has(item),
+)
+
 const SAMPLE = 4096
 
 function kind(type: string) {

@@ -11,6 +11,7 @@ import { getFilename } from "@opencode-ai/util/path"
 import { createEffect, createMemo, For, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Portal } from "solid-js/web"
+import { useNavigate } from "@solidjs/router"
 import { useCommand } from "@/context/command"
 import { useLanguage } from "@/context/language"
 import { useLayout } from "@/context/layout"
@@ -24,7 +25,6 @@ import { useSessionLayout } from "@/pages/session/session-layout"
 import { messageAgentColor } from "@/utils/agent"
 import { decode64 } from "@/utils/base64"
 import { Persist, persisted } from "@/utils/persist"
-import { writerBase } from "@/utils/writer-path"
 import { StatusPopover } from "../status-popover"
 
 const OPEN_APPS = [
@@ -139,10 +139,12 @@ export function SessionHeader() {
   const sync = useSync()
   const settings = useSettings()
   const terminal = useTerminal()
+  const navigate = useNavigate()
   const { params, view } = useSessionLayout()
   const writer = createMemo(() => settings.general.workspaceMode() === "writer")
+  const writerWeb = createMemo(() => writer() && platform.platform === "web")
 
-  const projectDirectory = createMemo(() => (writer() ? writerBase(decode64(params.dir) ?? "") : decode64(params.dir) ?? ""))
+  const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
   const project = createMemo(() => {
     const directory = projectDirectory()
     if (!directory) return
@@ -322,6 +324,17 @@ export function SessionHeader() {
         {(mount) => (
           <Portal mount={mount()}>
             <div class="flex items-center gap-2">
+              <Show when={writerWeb()}>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  class="h-6 px-2"
+                  onClick={() => navigate("/")}
+                  aria-label={language.t("writer.home.back")}
+                >
+                  {language.t("writer.home.back")}
+                </Button>
+              </Show>
               <Show when={projectDirectory()}>
                 <Show when={!writer()}>
                   <div class="hidden xl:flex items-center">

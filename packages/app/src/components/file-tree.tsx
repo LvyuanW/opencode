@@ -235,6 +235,7 @@ export default function FileTree(props: {
   active?: string
   level?: number
   allowed?: readonly string[]
+  hidden?: readonly string[]
   modified?: readonly string[]
   kinds?: ReadonlyMap<string, Kind>
   draggable?: boolean
@@ -243,6 +244,7 @@ export default function FileTree(props: {
   onMenu?: (node: FileNode) => JSXElement
 
   _filter?: Filter
+  _hidden?: Set<string>
   _marks?: Set<string>
   _deeps?: Map<string, number>
   _kinds?: ReadonlyMap<string, Kind>
@@ -279,6 +281,12 @@ export default function FileTree(props: {
     }
 
     return { files, dirs }
+  })
+
+  const hidden = createMemo(() => {
+    if (props._hidden) return props._hidden
+    if (!props.hidden?.length) return
+    return new Set(props.hidden.map(key))
   })
 
   const marks = createMemo(() => {
@@ -403,7 +411,8 @@ export default function FileTree(props: {
   )
 
   const nodes = createMemo(() => {
-    const nodes = file.tree.children(props.path)
+    const hide = hidden()
+    const nodes = file.tree.children(props.path).filter((node) => !hide?.has(key(node.path)))
     const current = filter()
     if (!current) return nodes
 
@@ -427,6 +436,7 @@ export default function FileTree(props: {
 
     for (const dir of current.dirs) {
       if (parent(dir) !== props.path) continue
+      if (hide?.has(key(dir))) continue
       if (seen.has(dir)) continue
       out.push({
         name: leaf(dir),
@@ -440,6 +450,7 @@ export default function FileTree(props: {
 
     for (const item of current.files) {
       if (parent(item) !== props.path) continue
+      if (hide?.has(key(item))) continue
       if (seen.has(item)) continue
       out.push({
         name: leaf(item),
@@ -493,12 +504,12 @@ export default function FileTree(props: {
                         node={node}
                         level={level}
                         active={props.active}
-                      nodeClass={props.nodeClass}
-                      draggable={draggable()}
-                      movable={movable()}
-                      kinds={kinds()}
-                      marks={marks()}
-                      onDragOver={(event: DragEvent) => over(event, node.path)}
+                        nodeClass={props.nodeClass}
+                        draggable={draggable()}
+                        movable={movable()}
+                        kinds={kinds()}
+                        marks={marks()}
+                        onDragOver={(event: DragEvent) => over(event, node.path)}
                         onDrop={(event: DragEvent) => drop(event, node.path)}
                       >
                         <div class="size-4 flex items-center justify-center text-icon-weak">
@@ -524,6 +535,7 @@ export default function FileTree(props: {
                         path={node.path}
                         level={level + 1}
                         allowed={props.allowed}
+                        hidden={props.hidden}
                         modified={props.modified}
                         kinds={props.kinds}
                         active={props.active}
@@ -532,6 +544,7 @@ export default function FileTree(props: {
                         onMove={props.onMove}
                         onMenu={props.onMenu}
                         _filter={filter()}
+                        _hidden={hidden()}
                         _marks={marks()}
                         _deeps={deeps()}
                         _kinds={kinds()}

@@ -1643,6 +1643,7 @@ export default function Page() {
       sync,
       globalSync,
       draft: item,
+      allowCommand: !writer(),
       optimisticBusy: item.sessionDirectory === sdk.directory,
     })
       .then((ok) => {

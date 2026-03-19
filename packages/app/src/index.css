@@ -163,15 +163,16 @@
   }
 
   [data-component="writer-home-hero"] {
-    position: relative;
-    padding: 2.75rem 2rem 2.25rem;
-    border-radius: 1.75rem;
-    background:
-      radial-gradient(circle at top, rgba(196, 160, 118, 0.16), transparent 44%),
-      linear-gradient(180deg, rgba(255, 249, 241, 0.92), rgba(248, 239, 227, 0.9));
-    box-shadow:
-      0 0 0 1px rgba(111, 79, 51, 0.08),
-      0 32px 70px -46px rgba(74, 53, 40, 0.52);
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  [data-component="writer-home-kicker"] {
+    font-family: var(--writer-font-display);
+    font-size: 0.78rem;
+    font-weight: 400;
+    letter-spacing: 0.18em;
   }
 
   [data-component="writer-home-title"] {

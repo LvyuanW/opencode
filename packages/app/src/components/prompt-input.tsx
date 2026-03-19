@@ -57,6 +57,7 @@ import { PromptImageAttachments } from "./prompt-input/image-attachments"
 import { PromptDragOverlay } from "./prompt-input/drag-overlay"
 import { promptPlaceholder } from "./prompt-input/placeholder"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
+import { DialogWriterSkills } from "@/components/dialog-writer-skills"
 
 interface PromptInputProps {
   class?: string
@@ -460,7 +461,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const escBlur = () => platform.platform === "desktop" && platform.os === "macos"
 
-  const pick = () => fileInputRef?.click()
+  const openSkills = () => dialog.show(() => <DialogWriterSkills />)
+
+  const pick = () => {
+    if (writer()) {
+      openSkills()
+      return
+    }
+    fileInputRef?.click()
+  }
 
   const setMode = (mode: "normal" | "shell") => {
     setStore("mode", mode)
@@ -475,7 +484,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     const items = [
       {
         id: "file.attach",
-        title: language.t("prompt.action.attachFile"),
+        title: language.t(writer() ? "prompt.action.manageSkills" : "prompt.action.attachFile"),
         category: language.t("command.category.file"),
         keybind: "mod+u",
         disabled: store.mode !== "normal",
@@ -659,7 +668,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       source: cmd.source,
     }))
 
-    if (writer()) return custom
+    if (writer()) return []
 
     const builtin = command.options
       .filter((opt) => !opt.disabled && !opt.id.startsWith("suggested.") && opt.slash)
@@ -932,7 +941,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     if (!shellMode) {
       const atMatch = rawText.substring(0, cursorPosition).match(/@(\S*)$/)
-      const slashMatch = rawText.match(/^\/(\S*)$/)
+      const slashMatch = writer() ? undefined : rawText.match(/^\/(\S*)$/)
 
       if (atMatch) {
         atOnInput(atMatch[1])
@@ -1154,6 +1163,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     onQueue: props.onQueue,
     onAbort: props.onAbort,
     onSubmit: props.onSubmit,
+    allowCommand: () => !writer(),
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -1495,7 +1505,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             >
               <TooltipKeybind
                 placement="top"
-                title={language.t("prompt.action.attachFile")}
+                title={language.t(writer() ? "prompt.action.manageSkills" : "prompt.action.attachFile")}
                 keybind={command.keybind("file.attach")}
               >
                 <Button
@@ -1507,7 +1517,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   onClick={pick}
                   disabled={store.mode !== "normal"}
                   tabIndex={store.mode === "normal" ? undefined : -1}
-                  aria-label={language.t("prompt.action.attachFile")}
+                  aria-label={language.t(writer() ? "prompt.action.manageSkills" : "prompt.action.attachFile")}
                 >
                   <Icon name="plus" class="size-4.5" />
                 </Button>

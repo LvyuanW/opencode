@@ -5,12 +5,14 @@ import { useGlobalSync } from "./global-sync"
 import { useGlobalSDK } from "./global-sdk"
 import { useServer } from "./server"
 import { usePlatform } from "./platform"
+import { useSettings } from "./settings"
 import { Project } from "@opencode-ai/sdk/v2"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { decode64 } from "@/utils/base64"
 import { same } from "@/utils/same"
 import { createScrollPersistence, type SessionScroll } from "./layout-scroll"
 import { createPathHelpers } from "./file/path"
+import { getFilename } from "@opencode-ai/util/path"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 const DEFAULT_PANEL_WIDTH = 344
@@ -137,6 +139,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const globalSync = useGlobalSync()
     const server = useServer()
     const platform = usePlatform()
+    const settings = useSettings()
+    const writer = createMemo(() => settings.general.workspaceMode() === "writer")
 
     const isRecord = (value: unknown): value is Record<string, unknown> =>
       typeof value === "object" && value !== null && !Array.isArray(value)
@@ -408,6 +412,19 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       }
 
+      if (writer()) {
+        return {
+          ...base,
+          name: local?.name ?? getFilename(project.worktree),
+          commands: local?.commands ?? base.commands,
+          icon: {
+            url: base.icon?.url,
+            override: local?.icon?.override ?? base.icon?.override,
+            color: local?.icon?.color ?? base.icon?.color,
+          },
+        }
+      }
+
       const isGlobal = projectID === "global" || (metadata?.id === undefined && localOverride)
       if (!isGlobal) return base
 
@@ -436,6 +453,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     })
 
     const rootFor = (directory: string) => {
+      if (writer()) return directory
       const map = roots()
       if (map.size === 0) return directory
 

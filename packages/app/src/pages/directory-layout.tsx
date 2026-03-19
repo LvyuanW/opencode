@@ -11,8 +11,9 @@ import { base64Encode } from "@opencode-ai/util/encode"
 import { decode64 } from "@/utils/base64"
 import { showToast } from "@opencode-ai/ui/toast"
 import { useLanguage } from "@/context/language"
+import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
-import { writerBase, writerUser, writerVisitor } from "@/utils/writer-path"
+import { writerBase, writerUser, writerWorkspace } from "@/utils/writer-path"
 function DirectoryDataProvider(props: ParentProps<{ directory: string }>) {
   const navigate = useNavigate()
   const sync = useSync()
@@ -35,9 +36,11 @@ export default function Layout(props: ParentProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const language = useLanguage()
+  const platform = usePlatform()
   const settings = useSettings()
   const globalSDK = useGlobalSDK()
   const writer = createMemo(() => settings.general.workspaceMode() === "writer")
+  const workspace = createMemo(() => writerWorkspace(decode64(params.dir) ?? ""))
   const directory = createMemo(() => {
     const raw = decode64(params.dir) ?? ""
     if (!writer()) return raw
@@ -59,6 +62,10 @@ export default function Layout(props: ParentProps) {
       navigate("/", { replace: true })
       return
     }
+    if (writer() && platform.platform === "web" && !workspace()) {
+      navigate("/", { replace: true })
+      return
+    }
 
     const current = params.dir
     const route = decode64(current) ?? raw
@@ -71,7 +78,7 @@ export default function Layout(props: ParentProps) {
       .then((x) => {
         if (params.dir !== current) return
         const root = x.data?.directory ?? raw
-        const next = writer() ? writerUser(root, writerVisitor()) : root
+        const next = writer() ? writerUser(root, workspace()) : root
         batch(() => {
           setState("invalid", "")
           setState("resolved", next)

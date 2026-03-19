@@ -17,7 +17,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { Persist, persisted } from "@/utils/persist"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { decode64 } from "@/utils/base64"
-import { writerUser, writerVisitor } from "@/utils/writer-path"
+import { writerUser, writerVisitor, writerWorkspace } from "@/utils/writer-path"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Button } from "@opencode-ai/ui/button"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -140,6 +140,14 @@ export default function Layout(props: ParentProps) {
   }
   const colorSchemeLabel = (scheme: ColorScheme) => language.t(colorSchemeKey[scheme])
   const currentDir = createMemo(() => decode64(params.dir) ?? "")
+  const workspace = createMemo(() => writerWorkspace(currentDir()))
+  const writerId = createMemo(() => {
+    if (!writer()) return ""
+    if (workspace()) return workspace()
+    if (platform.platform === "web") return ""
+    return writerVisitor()
+  })
+  const landing = createMemo(() => writer() && platform.platform === "web" && !params.dir)
   const [state, setState] = createStore({
     autoselect: !initialDirectory,
     busyWorkspaces: {} as Record<string, boolean>,
@@ -280,6 +288,7 @@ export default function Layout(props: ParentProps) {
   })
 
   const autoselecting = createMemo(() => {
+    if (landing()) return false
     if (params.dir) return false
     if (!state.autoselect) return false
     if (!pageReady()) return true
@@ -309,6 +318,16 @@ export default function Layout(props: ParentProps) {
     setState("hoverSession", undefined)
     setHoverProject(undefined)
   }
+
+  createEffect(() => {
+    if (!landing()) return
+    layout.mobileSidebar.hide()
+    setState("hoverSession", undefined)
+    setState("hoverProject", undefined)
+    setState("peek", undefined)
+    setState("peeked", false)
+    setState("nav", undefined)
+  })
 
   const navigateWithSidebarReset = (href: string) => {
     clearSidebarHoverState()
@@ -557,6 +576,10 @@ export default function Layout(props: ParentProps) {
 
     const projects = layout.projects.list()
 
+    if (writer()) {
+      return projects.find((p) => p.worktree === directory)
+    }
+
     const sandbox = projects.find((p) => p.sandboxes?.includes(directory))
     if (sandbox) return sandbox
 
@@ -574,13 +597,42 @@ export default function Layout(props: ParentProps) {
     return projects.find((p) => p.worktree === root)
   })
 
+  createEffect(() => {
+    if (!writer()) return
+    const directory = currentDir()
+    if (!directory) return
+
+    const list = layout.projects.list()
+    const current = list.find((project) => workspaceKey(project.worktree) === workspaceKey(directory))
+    if (!current) {
+      layout.projects.open(directory)
+      return
+    }
+
+    for (const project of list) {
+      if (workspaceKey(project.worktree) === workspaceKey(directory)) continue
+      layout.projects.close(project.worktree)
+    }
+
+    if (server.projects.last() !== directory) {
+      server.projects.touch(directory)
+    }
+  })
+
   createEffect(
     on(
-      () => ({ ready: pageReady(), layoutReady: layoutReady(), dir: params.dir, list: layout.projects.list() }),
+      () => ({
+        ready: pageReady(),
+        layoutReady: layoutReady(),
+        dir: params.dir,
+        list: layout.projects.list(),
+        landing: landing(),
+      }),
       (value) => {
         if (!value.ready) return
         if (!value.layoutReady) return
         if (!state.autoselect) return
+        if (value.landing) return
         if (value.dir) return
 
         const last = server.projects.last()
@@ -1188,6 +1240,7 @@ export default function Layout(props: ParentProps) {
   }
 
   function projectRoot(directory: string) {
+    if (writer()) return directory
     const project = layout.projects
       .list()
       .find((item) => item.worktree === directory || item.sandboxes?.includes(directory))
@@ -1246,8 +1299,13 @@ export default function Layout(props: ParentProps) {
   async function navigateToProject(directory: string | undefined) {
     if (!directory) return
     const root = projectRoot(directory)
+    const id = writerId()
+    if (writer() && !id) {
+      navigate("/", { replace: true })
+      return
+    }
     server.projects.touch(root)
-    const user = writer() ? writerUser(root, writerVisitor()) : root
+    const user = writer() ? writerUser(root, id) : root
     const project = layout.projects.list().find((item) => item.worktree === root)
     let dirs = writer()
       ? [user]
@@ -1813,8 +1871,10 @@ export default function Layout(props: ParentProps) {
   function workspaceIds(project: LocalProject | undefined) {
     if (!project) return []
     if (writer()) {
+      const id = writerId()
+      if (!id) return []
       const active = currentProject()
-      const directory = active?.worktree === project.worktree ? currentDir() : writerUser(project.worktree, writerVisitor())
+      const directory = active?.worktree === project.worktree ? currentDir() : writerUser(project.worktree, id)
       return [directory]
     }
 
@@ -2305,78 +2365,84 @@ export default function Layout(props: ParentProps) {
       <div class="flex-1 min-h-0 min-w-0 flex">
         <div class="flex-1 min-h-0 relative">
           <div class="size-full relative overflow-x-hidden">
-            <nav
-              aria-label={language.t("sidebar.nav.projectsAndSessions")}
-              data-component="sidebar-nav-desktop"
-              classList={{
-                "hidden xl:block": true,
-                "absolute inset-y-0 left-0": true,
-                "z-10": true,
-              }}
-              style={{ width: `${Math.max(layout.sidebar.width(), 244)}px` }}
-              ref={(el) => {
-                setState("nav", el)
-              }}
-              onMouseEnter={() => {
-                disarm()
-              }}
-              onMouseLeave={() => {
-                aim.reset()
-                if (!sidebarHovering()) return
-
-                arm()
-              }}
-            >
-              <div class="@container w-full h-full contain-strict">{sidebarContent()}</div>
-              <Show when={layout.sidebar.opened()}>
-                <div onPointerDown={() => setState("sizing", true)}>
-                  <ResizeHandle
-                    direction="horizontal"
-                    size={layout.sidebar.width()}
-                    min={244}
-                    max={typeof window === "undefined" ? 1000 : window.innerWidth * 0.3 + 64}
-                    collapseThreshold={244}
-                    onResize={(w) => {
-                      setState("sizing", true)
-                      if (sizet !== undefined) clearTimeout(sizet)
-                      sizet = window.setTimeout(() => setState("sizing", false), 120)
-                      layout.sidebar.resize(w)
-                    }}
-                    onCollapse={layout.sidebar.close}
-                  />
-                </div>
-              </Show>
-            </nav>
-
-            <div
-              class="hidden xl:block pointer-events-none absolute top-0 right-0 z-0 border-t border-border-weaker-base"
-              style={{ left: "calc(4rem + 12px)" }}
-            />
-
-            <div class="xl:hidden">
-              <div
-                classList={{
-                  "fixed inset-x-0 top-10 bottom-0 z-40 transition-opacity duration-200": true,
-                  "opacity-100 pointer-events-auto": layout.mobileSidebar.opened(),
-                  "opacity-0 pointer-events-none": !layout.mobileSidebar.opened(),
-                }}
-                onClick={(e) => {
-                  if (e.target === e.currentTarget) layout.mobileSidebar.hide()
-                }}
-              />
+            <Show when={!landing()}>
               <nav
                 aria-label={language.t("sidebar.nav.projectsAndSessions")}
-                data-component="sidebar-nav-mobile"
+                data-component="sidebar-nav-desktop"
                 classList={{
-                  "@container fixed top-10 bottom-0 left-0 z-50 w-full max-w-[400px] overflow-hidden border-r border-border-weaker-base bg-background-base transition-transform duration-200 ease-out": true,
-                  "translate-x-0": layout.mobileSidebar.opened(),
-                  "-translate-x-full": !layout.mobileSidebar.opened(),
+                  "hidden xl:block": true,
+                  "absolute inset-y-0 left-0": true,
+                  "z-10": true,
                 }}
-                onClick={(e) => e.stopPropagation()}
+                style={{ width: `${Math.max(layout.sidebar.width(), 244)}px` }}
+                ref={(el) => {
+                  setState("nav", el)
+                }}
+                onMouseEnter={() => {
+                  disarm()
+                }}
+                onMouseLeave={() => {
+                  aim.reset()
+                  if (!sidebarHovering()) return
+
+                  arm()
+                }}
               >
-                {sidebarContent(true)}
+                <div class="@container w-full h-full contain-strict">{sidebarContent()}</div>
+                <Show when={layout.sidebar.opened()}>
+                  <div onPointerDown={() => setState("sizing", true)}>
+                    <ResizeHandle
+                      direction="horizontal"
+                      size={layout.sidebar.width()}
+                      min={244}
+                      max={typeof window === "undefined" ? 1000 : window.innerWidth * 0.3 + 64}
+                      collapseThreshold={244}
+                      onResize={(w) => {
+                        setState("sizing", true)
+                        if (sizet !== undefined) clearTimeout(sizet)
+                        sizet = window.setTimeout(() => setState("sizing", false), 120)
+                        layout.sidebar.resize(w)
+                      }}
+                      onCollapse={layout.sidebar.close}
+                    />
+                  </div>
+                </Show>
               </nav>
-            </div>
+            </Show>
+
+            <Show when={!landing()}>
+              <div
+                class="hidden xl:block pointer-events-none absolute top-0 right-0 z-0 border-t border-border-weaker-base"
+                style={{ left: "calc(4rem + 12px)" }}
+              />
+            </Show>
+
+            <Show when={!landing()}>
+              <div class="xl:hidden">
+                <div
+                  classList={{
+                    "fixed inset-x-0 top-10 bottom-0 z-40 transition-opacity duration-200": true,
+                    "opacity-100 pointer-events-auto": layout.mobileSidebar.opened(),
+                    "opacity-0 pointer-events-none": !layout.mobileSidebar.opened(),
+                  }}
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) layout.mobileSidebar.hide()
+                  }}
+                />
+                <nav
+                  aria-label={language.t("sidebar.nav.projectsAndSessions")}
+                  data-component="sidebar-nav-mobile"
+                  classList={{
+                    "@container fixed top-10 bottom-0 left-0 z-50 w-full max-w-[400px] overflow-hidden border-r border-border-weaker-base bg-background-base transition-transform duration-200 ease-out": true,
+                    "translate-x-0": layout.mobileSidebar.opened(),
+                    "-translate-x-full": !layout.mobileSidebar.opened(),
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {sidebarContent(true)}
+                </nav>
+              </div>
+            </Show>
 
             <div
               classList={{
@@ -2387,12 +2453,18 @@ export default function Layout(props: ParentProps) {
                   !state.sizing,
               }}
               style={{
-                "--main-left": layout.sidebar.opened() ? `${Math.max(layout.sidebar.width(), 244)}px` : "4rem",
+                "--main-left": landing()
+                  ? "0px"
+                  : layout.sidebar.opened()
+                    ? `${Math.max(layout.sidebar.width(), 244)}px`
+                    : "4rem",
               }}
             >
               <main
                 classList={{
-                  "size-full overflow-x-hidden flex flex-col items-start contain-strict border-t border-border-weak-base bg-background-base xl:border-l xl:rounded-tl-[12px]": true,
+                  "size-full overflow-x-hidden flex flex-col items-start contain-strict border-t border-border-weak-base bg-background-base":
+                    true,
+                  "xl:border-l xl:rounded-tl-[12px]": !landing(),
                 }}
               >
                 <Show when={!autoselecting()} fallback={<div class="size-full" />}>
@@ -2401,43 +2473,47 @@ export default function Layout(props: ParentProps) {
               </main>
             </div>
 
-            <div
-              classList={{
-                "hidden xl:flex absolute inset-y-0 left-16 z-30": true,
-                "opacity-100 translate-x-0 pointer-events-auto": state.peeked && !layout.sidebar.opened(),
-                "opacity-0 -translate-x-2 pointer-events-none": !state.peeked || layout.sidebar.opened(),
-                "transition-[opacity,transform] motion-reduce:transition-none": true,
-                "duration-180 ease-out": state.peeked && !layout.sidebar.opened(),
-                "duration-120 ease-in": !state.peeked || layout.sidebar.opened(),
-              }}
-              onMouseMove={disarm}
-              onMouseEnter={() => {
-                disarm()
-                aim.reset()
-              }}
-              onPointerDown={disarm}
-              onMouseLeave={() => {
-                arm()
-              }}
-            >
-              <Show when={peekProject()}>
-                <SidebarPanel project={peekProject} merged={false} />
-              </Show>
-            </div>
+            <Show when={!landing()}>
+              <div
+                classList={{
+                  "hidden xl:flex absolute inset-y-0 left-16 z-30": true,
+                  "opacity-100 translate-x-0 pointer-events-auto": state.peeked && !layout.sidebar.opened(),
+                  "opacity-0 -translate-x-2 pointer-events-none": !state.peeked || layout.sidebar.opened(),
+                  "transition-[opacity,transform] motion-reduce:transition-none": true,
+                  "duration-180 ease-out": state.peeked && !layout.sidebar.opened(),
+                  "duration-120 ease-in": !state.peeked || layout.sidebar.opened(),
+                }}
+                onMouseMove={disarm}
+                onMouseEnter={() => {
+                  disarm()
+                  aim.reset()
+                }}
+                onPointerDown={disarm}
+                onMouseLeave={() => {
+                  arm()
+                }}
+              >
+                <Show when={peekProject()}>
+                  <SidebarPanel project={peekProject} merged={false} />
+                </Show>
+              </div>
+            </Show>
 
-            <div
-              classList={{
-                "hidden xl:block pointer-events-none absolute inset-y-0 right-0 z-25 overflow-hidden": true,
-                "opacity-100 translate-x-0": state.peeked && !layout.sidebar.opened(),
-                "opacity-0 -translate-x-2": !state.peeked || layout.sidebar.opened(),
-                "transition-[opacity,transform] motion-reduce:transition-none": true,
-                "duration-180 ease-out": state.peeked && !layout.sidebar.opened(),
-                "duration-120 ease-in": !state.peeked || layout.sidebar.opened(),
-              }}
-              style={{ left: `calc(4rem + ${Math.max(Math.max(layout.sidebar.width(), 244) - 64, 0)}px)` }}
-            >
-              <div class="h-full w-px" style={{ "box-shadow": "var(--shadow-sidebar-overlay)" }} />
-            </div>
+            <Show when={!landing()}>
+              <div
+                classList={{
+                  "hidden xl:block pointer-events-none absolute inset-y-0 right-0 z-25 overflow-hidden": true,
+                  "opacity-100 translate-x-0": state.peeked && !layout.sidebar.opened(),
+                  "opacity-0 -translate-x-2": !state.peeked || layout.sidebar.opened(),
+                  "transition-[opacity,transform] motion-reduce:transition-none": true,
+                  "duration-180 ease-out": state.peeked && !layout.sidebar.opened(),
+                  "duration-120 ease-in": !state.peeked || layout.sidebar.opened(),
+                }}
+                style={{ left: `calc(4rem + ${Math.max(Math.max(layout.sidebar.width(), 244) - 64, 0)}px)` }}
+              >
+                <div class="h-full w-px" style={{ "box-shadow": "var(--shadow-sidebar-overlay)" }} />
+              </div>
+            </Show>
           </div>
         </div>
         {import.meta.env.DEV && <DebugBar />}

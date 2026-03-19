@@ -1,11 +1,11 @@
-import { For, Match, Show, Switch, createEffect, createMemo, onCleanup, type JSX } from "solid-js"
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createMediaQuery } from "@solid-primitives/media"
 import type { FileDiff, FileNode } from "@opencode-ai/sdk/v2"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { ContextMenu } from "@opencode-ai/ui/context-menu"
 import { IconButton } from "@opencode-ai/ui/icon-button"
-import { TooltipKeybind } from "@opencode-ai/ui/tooltip"
+import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Mark } from "@opencode-ai/ui/logo"
 import { Dialog } from "@opencode-ai/ui/dialog"
@@ -31,6 +31,7 @@ import { FileTabContent } from "@/pages/session/file-tabs"
 import { createOpenSessionFileTab, createSessionTabs, getTabReorderIndex, type Sizing } from "@/pages/session/helpers"
 import { setSessionHandoff } from "@/pages/session/handoff"
 import { useSessionLayout } from "@/pages/session/session-layout"
+import { attachmentMime, TEXT_FILE_TYPES } from "@/components/prompt-input/files"
 
 export function SessionSidePanel(props: {
   reviewPanel: () => JSX.Element
@@ -93,6 +94,10 @@ export function SessionSidePanel(props: {
     return reviewKey("session.review.noChanges", "session.revision.noChanges")
   })
   const reviewEmpty = createMemo(() => props.reviewEmpty?.() ?? language.t(reviewEmptyKey()))
+  const hidden = createMemo(() => (props.writer ? [".skills"] : undefined))
+  const roots = createMemo(() => file.tree.children("").filter((node) => !(props.writer && node.name === ".skills")))
+  const [busy, setBusy] = createSignal(false)
+  let uploadInput: HTMLInputElement | undefined
 
   const diffFiles = createMemo(() => diffs().map((d) => d.file))
   const kinds = createMemo(() => {
@@ -133,7 +138,7 @@ export function SessionSidePanel(props: {
   const nofiles = createMemo(() => {
     const state = file.tree.state("")
     if (!state?.loaded) return false
-    return file.tree.children("").length === 0
+    return roots().length === 0
   })
 
   const normalizeTab = (tab: string) => {
@@ -180,6 +185,7 @@ export function SessionSidePanel(props: {
   const fileTreeTab = () => layout.fileTree.tab()
 
   const setFileTreeTabValue = (value: string) => {
+    if (props.writer && value !== "all") return
     if (value !== "changes" && value !== "all") return
     layout.fileTree.setTab(value)
   }
@@ -197,6 +203,10 @@ export function SessionSidePanel(props: {
   })
 
   createEffect(() => {
+    if (props.writer && fileTreeTab() === "changes") {
+      layout.fileTree.setTab("all")
+      return
+    }
     if (reviewTab()) return
     if (fileTreeTab() !== "changes") return
     layout.fileTree.setTab("all")
@@ -263,13 +273,70 @@ export function SessionSidePanel(props: {
 
   const clean = (value: string) => value.trim().replaceAll("\\", "/").replace(/^\/+/, "").replace(/\/+$/, "")
 
-  function DialogCreate(props: { dir: string; type: "file" | "directory" }) {
+  const split = (value: string) => {
+    const idx = value.lastIndexOf(".")
+    if (idx <= 0) return { head: value, tail: "" }
+    return { head: value.slice(0, idx), tail: value.slice(idx) }
+  }
+
+  const unique = (value: string, seen: Set<string>) => {
+    const part = split(value)
+    let next = value
+    let idx = 2
+    while (seen.has(next)) {
+      next = `${part.head}-${idx}${part.tail}`
+      idx += 1
+    }
+    seen.add(next)
+    return next
+  }
+
+  const upload = (list: File[]) => {
+    if (!props.writer || list.length === 0 || busy()) return
+
+    setBusy(true)
+    void Promise.all(list.map(async (item) => ({ item, mime: await attachmentMime(item) })))
+      .then(async (list) => {
+        if (list.some((item) => item.mime !== "text/plain")) {
+          showToast({
+            variant: "error",
+            title: language.t("writer.files.upload.invalid.title"),
+            description: language.t("writer.files.upload.invalid.description"),
+          })
+          return
+        }
+
+        await file.tree.list("")
+        const seen = new Set(file.tree.children("").map((node) => node.name))
+        await Promise.all(
+          list.map(async (item) => {
+            const path = unique(item.item.name, seen)
+            await file.write(path, await item.item.text())
+          }),
+        )
+        await file.tree.refresh("")
+        showToast({
+          title: language.t("writer.files.upload.success.title"),
+          description: language.t("writer.files.upload.success.description", { count: list.length }),
+        })
+      })
+      .catch((error) => {
+        showToast({
+          variant: "error",
+          title: language.t("writer.files.upload.failed.title"),
+          description: error instanceof Error ? error.message : language.t("common.requestFailed"),
+        })
+      })
+      .finally(() => setBusy(false))
+  }
+
+  function DialogCreate(input: { dir: string; type: "file" | "directory" }) {
     const [store, setStore] = createStore({ name: "", busy: false })
     const title = createMemo(() =>
-      props.type === "file" ? language.t("session.files.action.newFile") : language.t("session.files.action.newFolder"),
+      input.type === "file" ? language.t("session.files.action.newFile") : language.t("session.files.action.newFolder"),
     )
     const placeholder = createMemo(() =>
-      props.type === "file"
+      input.type === "file"
         ? language.t("session.files.dialog.newFile.placeholder")
         : language.t("session.files.dialog.newFolder.placeholder"),
     )
@@ -286,16 +353,24 @@ export function SessionSidePanel(props: {
         })
         return
       }
+      if (props.writer && value.split("/").some((part) => part === ".skills")) {
+        showToast({
+          variant: "error",
+          title: language.t("common.requestFailed"),
+          description: language.t("writer.files.hidden.description"),
+        })
+        return
+      }
 
-      const path = join(props.dir, value)
+      const path = join(input.dir, value)
       setStore("busy", true)
       await file
-        .create(path, props.type)
+        .create(path, input.type)
         .then((next) => {
-          if (props.type === "file") {
+          if (input.type === "file") {
             openTab(file.tab(next))
           }
-          if (props.type === "directory") {
+          if (input.type === "directory") {
             file.tree.expand(next)
           }
           dialog.close()
@@ -586,7 +661,7 @@ export function SessionSidePanel(props: {
                 data-scope="filetree"
               >
                 <Tabs.List>
-                  <Show when={reviewTab()}>
+                  <Show when={reviewTab() && !props.writer}>
                     <Tabs.Trigger value="changes" class="flex-1" classes={{ button: "w-full" }}>
                       {reviewCount()}{" "}
                       {language.t(
@@ -599,8 +674,35 @@ export function SessionSidePanel(props: {
                   <Tabs.Trigger value="all" class="flex-1" classes={{ button: "w-full" }}>
                     {language.t(fileKey("session.files.all", "session.files.all.writer"))}
                   </Tabs.Trigger>
+                  <Show when={props.writer && fileTreeTab() === "all"}>
+                    <input
+                      ref={uploadInput}
+                      type="file"
+                      multiple
+                      accept={TEXT_FILE_TYPES.join(",")}
+                      class="hidden"
+                      onChange={(e) => {
+                        const list = Array.from(e.currentTarget.files ?? [])
+                        upload(list)
+                        e.currentTarget.value = ""
+                      }}
+                    />
+                    <div class="bg-background-stronger h-full shrink-0 sticky right-0 z-10 flex items-center justify-center pr-3">
+                      <Tooltip placement="bottom" value={language.t("writer.files.upload")}>
+                        <IconButton
+                          icon="cloud-upload"
+                          variant="ghost"
+                          iconSize="large"
+                          class="!rounded-md"
+                          disabled={busy()}
+                          onClick={() => uploadInput?.click()}
+                          aria-label={language.t("writer.files.upload")}
+                        />
+                      </Tooltip>
+                    </div>
+                  </Show>
                 </Tabs.List>
-                <Show when={reviewTab()}>
+                <Show when={reviewTab() && !props.writer}>
                   <Tabs.Content value="changes" class="h-full bg-background-stronger px-3 py-0">
                     <Switch>
                       <Match when={reviewCount() > 0}>
@@ -617,6 +719,7 @@ export function SessionSidePanel(props: {
                             path=""
                             class="pt-3 min-h-full"
                             allowed={diffFiles()}
+                            hidden={hidden()}
                             kinds={kinds()}
                             draggable={false}
                             active={props.activeDiff}
@@ -624,9 +727,7 @@ export function SessionSidePanel(props: {
                           />
                         </Show>
                       </Match>
-                      <Match when={true}>
-                        {empty(reviewEmpty())}
-                      </Match>
+                      <Match when={true}>{empty(reviewEmpty())}</Match>
                     </Switch>
                   </Tabs.Content>
                 </Show>
@@ -642,6 +743,7 @@ export function SessionSidePanel(props: {
                           <FileTree
                             path=""
                             class="pt-3 min-h-full"
+                            hidden={hidden()}
                             modified={diffFiles()}
                             kinds={kinds()}
                             onFileClick={(node) => openTab(file.tab(node.path))}
@@ -660,6 +762,7 @@ export function SessionSidePanel(props: {
                             <FileTree
                               path=""
                               class="pt-3 min-h-full"
+                              hidden={hidden()}
                               modified={diffFiles()}
                               kinds={kinds()}
                               onFileClick={(node) => openTab(file.tab(node.path))}

@@ -20,7 +20,6 @@ import { useSessionLayout } from "@/pages/session/session-layout"
 import { createSessionTabs } from "@/pages/session/helpers"
 import { decode64 } from "@/utils/base64"
 import { getRelativeTime } from "@/utils/time"
-import { writerBase } from "@/utils/writer-path"
 
 type EntryType = "command" | "file" | "session"
 
@@ -282,7 +281,7 @@ export function DialogSelectFile(props: { mode?: DialogSelectFileMode; onOpenFil
   const fileEntries = createFileEntries({ file, tabs, language })
   const writer = createMemo(() => settings.general.workspaceMode() === "writer")
 
-  const projectDirectory = createMemo(() => (writer() ? writerBase(decode64(params.dir) ?? "") : decode64(params.dir) ?? ""))
+  const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
   const project = createMemo(() => {
     const directory = projectDirectory()
     if (!directory) return

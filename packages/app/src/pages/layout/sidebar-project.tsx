@@ -11,7 +11,6 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
 import { useNotification } from "@/context/notification"
 import { useSettings } from "@/context/settings"
-import { writerBase } from "@/utils/writer-path"
 import { ProjectIcon, SessionItem, type SessionItemProps } from "./sidebar-items"
 import { childMapByParent, displayName, sortedRootSessions } from "./helpers"
 
@@ -287,7 +286,7 @@ export const SortableProject = (props: {
   const writer = createMemo(() => settings.general.workspaceMode() === "writer")
   const pick = (code: string, prose: string) => (writer() ? prose : code)
   const sortable = createSortable(props.project.worktree)
-  const current = createMemo(() => (writer() ? writerBase(props.ctx.currentDir()) : props.ctx.currentDir()))
+  const current = createMemo(() => props.ctx.currentDir())
   const selected = createMemo(
     () => props.project.worktree === current() || props.project.sandboxes?.includes(current()) === true,
   )

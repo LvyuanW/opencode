@@ -41,6 +41,7 @@ type FollowupSendInput = {
   globalSync: ReturnType<typeof useGlobalSync>
   sync: ReturnType<typeof useSync>
   draft: FollowupDraft
+  allowCommand?: boolean
   messageID?: string
   optimisticBusy?: boolean
   before?: () => Promise<boolean> | boolean
@@ -73,7 +74,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
 
   const [head, ...tail] = text.split(" ")
   const cmd = head?.startsWith("/") ? head.slice(1) : undefined
-  if (cmd && input.sync.data.command.find((item) => item.name === cmd)) {
+  if (input.allowCommand !== false && cmd && input.sync.data.command.find((item) => item.name === cmd)) {
     setBusy()
     try {
       if (!(await wait())) {
@@ -170,6 +171,7 @@ type PromptSubmitInput = {
   imageAttachments: Accessor<ImageAttachmentPart[]>
   commentCount: Accessor<number>
   autoAccept: Accessor<boolean>
+  allowCommand?: Accessor<boolean>
   mode: Accessor<"normal" | "shell">
   working: Accessor<boolean>
   editor: () => HTMLDivElement | undefined
@@ -430,7 +432,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       return
     }
 
-    if (text.startsWith("/")) {
+    if (input.allowCommand?.() !== false && text.startsWith("/")) {
       const [cmdName, ...args] = text.split(" ")
       const commandName = cmdName.slice(1)
       const customCommand = sync.data.command.find((c) => c.name === commandName)
@@ -538,6 +540,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       sync,
       globalSync,
       draft,
+      allowCommand: input.allowCommand?.(),
       messageID,
       optimisticBusy: sessionDirectory === projectDirectory,
       before: waitForWorktree,

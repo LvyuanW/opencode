@@ -33,12 +33,24 @@ export function writerBase(input: string) {
   return trim(base)
 }
 
-export function writerUser(input: string, id: string) {
-  return join(writerBase(input), WRITER_USERS, id)
+export function writerWorkspace(input: string) {
+  const value = trim(input)
+  const mark = `/${WRITER_USERS}/`
+  const idx = value.indexOf(mark)
+  if (idx === -1) return ""
+  const tail = value.slice(idx + mark.length).split("/")[0] ?? ""
+  if (!tail) return ""
+  try {
+    return decodeURIComponent(tail)
+  } catch {
+    return tail
+  }
 }
 
-export function writerSkills(input: string) {
-  return join(input, WRITER_SKILLS)
+export function writerUser(input: string, id: string) {
+  const value = encodeURIComponent(id.trim())
+  if (!value) return writerBase(input)
+  return join(writerBase(input), WRITER_USERS, value)
 }
 
 export function writerVisitor() {
@@ -60,4 +72,8 @@ export function writerVisitor() {
     cached = next
     return next
   }
+}
+
+export function writerSkills(input: string) {
+  return join(input, WRITER_SKILLS)
 }
