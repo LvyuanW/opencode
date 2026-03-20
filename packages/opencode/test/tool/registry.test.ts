@@ -4,6 +4,8 @@ import fs from "fs/promises"
 import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/project/instance"
 import { ToolRegistry } from "../../src/tool/registry"
+import { Agent } from "../../src/agent/agent"
+import { ModelID, ProviderID } from "../../src/provider/schema"
 
 describe("tool.registry", () => {
   test("loads tools from .opencode/tool (singular)", async () => {
@@ -116,6 +118,50 @@ describe("tool.registry", () => {
       fn: async () => {
         const ids = await ToolRegistry.ids()
         expect(ids).toContain("cowsay")
+      },
+    })
+  })
+
+  test("writer uses write tools for gpt-5 models", async () => {
+    await using tmp = await tmpdir()
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const agent = await Agent.get("writer")
+        const tools = await ToolRegistry.tools(
+          {
+            providerID: ProviderID.make("openai"),
+            modelID: ModelID.make("gpt-5.4"),
+          },
+          agent,
+        )
+        const ids = tools.map((item) => item.id)
+        expect(ids).toContain("write")
+        expect(ids).toContain("edit")
+        expect(ids).not.toContain("apply_patch")
+      },
+    })
+  })
+
+  test("non-writer keeps apply_patch for gpt-5 models", async () => {
+    await using tmp = await tmpdir()
+
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const agent = await Agent.get("build")
+        const tools = await ToolRegistry.tools(
+          {
+            providerID: ProviderID.make("openai"),
+            modelID: ModelID.make("gpt-5.4"),
+          },
+          agent,
+        )
+        const ids = tools.map((item) => item.id)
+        expect(ids).toContain("apply_patch")
+        expect(ids).not.toContain("write")
+        expect(ids).not.toContain("edit")
       },
     })
   })
