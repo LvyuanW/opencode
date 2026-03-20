@@ -1,11 +1,15 @@
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
+import { rm, mkdtemp } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { basename, join } from "node:path"
 import z from "zod"
 import { File } from "../../file"
 import { Ripgrep } from "../../file/ripgrep"
 import { LSP } from "../../lsp"
 import { Instance } from "../../project/instance"
 import { lazy } from "../../util/lazy"
+import { which } from "../../util/which"
 
 export const FileRoutes = lazy(() =>
   new Hono()
@@ -278,6 +282,52 @@ export const FileRoutes = lazy(() =>
         const body = c.req.valid("json")
         await File.move(body.from, body.to)
         return c.json({ ok: true as const })
+      },
+    )
+    .get(
+      "/file/export",
+      describeRoute({
+        summary: "Export workspace",
+        description: "Create and download a compressed archive of the current workspace directory.",
+        operationId: "file.export",
+        responses: {
+          200: {
+            description: "Compressed workspace archive",
+          },
+        },
+      }),
+      async () => {
+        const tar = which("tar")
+        if (!tar) throw new Error("tar is not available on the server")
+
+        const name = (() => {
+          const raw = basename(Instance.directory).trim() || "workspace"
+          const safe = raw.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "workspace"
+          return `${safe}.tar.gz`
+        })()
+        const root = await mkdtemp(join(tmpdir(), "opencode-export-"))
+        const file = join(root, name)
+        const proc = Bun.spawn([tar, "-czf", file, "-C", Instance.directory, "."], {
+          stderr: "pipe",
+        })
+        const code = await proc.exited
+        if (code !== 0) {
+          const err = await new Response(proc.stderr).text().catch(() => "")
+          await rm(root, { recursive: true, force: true }).catch(() => undefined)
+          throw new Error(err.trim() || "Failed to create archive")
+        }
+
+        setTimeout(() => {
+          void rm(root, { recursive: true, force: true }).catch(() => undefined)
+        }, 300_000)
+
+        return new Response(Bun.file(file), {
+          headers: {
+            "cache-control": "no-store",
+            "content-type": "application/gzip",
+            "content-disposition": `attachment; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+          },
+        })
       },
     )
     .get(

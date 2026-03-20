@@ -62,6 +62,8 @@ import { DialogSelectServer } from "@/components/dialog-select-server"
 import { DialogSettings } from "@/components/dialog-settings"
 import { useCommand, type CommandOption } from "@/context/command"
 import { ConstrainDragXAxis, getDraggableId } from "@/utils/solid-dnd"
+import { authHeaders } from "@/utils/server"
+import { formatServerError } from "@/utils/server-errors"
 import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { DialogEditProject } from "@/components/dialog-edit-project"
 import { DebugBar } from "@/components/debug-bar"
@@ -151,6 +153,7 @@ export default function Layout(props: ParentProps) {
   const [state, setState] = createStore({
     autoselect: !initialDirectory,
     busyWorkspaces: {} as Record<string, boolean>,
+    exporting: false,
     hoverSession: undefined as string | undefined,
     hoverProject: undefined as string | undefined,
     scrollSessionKey: undefined as string | undefined,
@@ -1095,6 +1098,19 @@ export default function Layout(props: ParentProps) {
         keybind: "mod+comma",
         onSelect: () => openSettings(),
       },
+      ...(writer()
+        ? [
+            {
+              id: "workspace.export",
+              title: language.t("command.workspace.export"),
+              category: language.t("command.category.workspace"),
+              disabled: !currentDir() || state.exporting,
+              onSelect: () => {
+                void exportWorkspace()
+              },
+            } satisfies CommandOption,
+          ]
+        : []),
       {
         id: "session.previous",
         title: language.t("command.session.previous"),
@@ -1241,6 +1257,62 @@ export default function Layout(props: ParentProps) {
 
   function openSettings() {
     dialog.show(() => <DialogSettings />)
+  }
+
+  function exportFilename(directory: string) {
+    const raw = getFilename(directory).trim() || "workspace"
+    const name = raw.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "workspace"
+    return `${name}.tar.gz`
+  }
+
+  async function exportWorkspace() {
+    const directory = currentDir()
+    const current = server.current
+    if (!directory || !current || state.exporting) return
+
+    setState("exporting", true)
+
+    const url = new URL("/file/export", current.http.url)
+    url.searchParams.set("directory", directory)
+
+    try {
+      const response = await (platform.fetch ?? globalThis.fetch)(url, {
+        headers: {
+          ...(authHeaders(current.http) ?? {}),
+        },
+      })
+
+      if (!response.ok) {
+        const payload = await response.clone().json().catch(() => undefined)
+        const message =
+          payload && typeof payload === "object"
+            ? formatServerError(payload, language.t, language.t("common.requestFailed"))
+            : await response.text().catch(() => language.t("common.requestFailed"))
+        throw new Error(message || language.t("common.requestFailed"))
+      }
+
+      const blob = await response.blob()
+      const href = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      const disposition = response.headers.get("content-disposition") ?? ""
+      const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+      const quoted = disposition.match(/filename="([^"]+)"/i)?.[1]
+      link.href = href
+      link.download = encoded ? decodeURIComponent(encoded) : quoted ?? exportFilename(directory)
+      link.style.display = "none"
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      setTimeout(() => URL.revokeObjectURL(href), 1000)
+    } catch (error) {
+      showToast({
+        variant: "error",
+        title: language.t("common.requestFailed"),
+        description: formatServerError(error, language.t, language.t("common.requestFailed")),
+      })
+    } finally {
+      setState("exporting", false)
+    }
   }
 
   function projectRoot(directory: string) {
@@ -2347,6 +2419,10 @@ export default function Layout(props: ParentProps) {
       onToggleHistory={layout.sidebar.toggle}
       historyExpanded={() => layout.sidebar.opened()}
       showHistory={writer()}
+      exportLabel={() => language.t("command.workspace.export")}
+      onExport={() => void exportWorkspace()}
+      exportBusy={() => state.exporting}
+      showExport={writer()}
       renderProjectOverlay={projectOverlay}
       settingsLabel={() => language.t("sidebar.settings")}
       settingsKeybind={() => command.keybind("settings.open")}

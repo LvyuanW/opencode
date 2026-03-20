@@ -30,6 +30,10 @@ export const SidebarContent = (props: {
   onToggleHistory?: () => void
   historyExpanded?: Accessor<boolean>
   showHistory?: boolean
+  exportLabel?: Accessor<string>
+  onExport?: () => void
+  exportBusy?: Accessor<boolean>
+  showExport?: boolean
   renderProjectOverlay: () => JSX.Element
   settingsLabel: Accessor<string>
   settingsKeybind: Accessor<string | undefined>
@@ -115,6 +119,19 @@ export const SidebarContent = (props: {
           </DragDropProvider>
         </div>
         <div class="shrink-0 w-full pt-3 pb-6 flex flex-col items-center gap-2">
+          <Show when={props.showExport}>
+            <Tooltip placement={placement()} value={props.exportLabel?.() ?? ""}>
+              <IconButton
+                icon="download"
+                variant="ghost"
+                size="large"
+                onClick={props.onExport}
+                disabled={props.exportBusy?.()}
+                aria-label={props.exportLabel?.()}
+                aria-busy={props.exportBusy?.()}
+              />
+            </Tooltip>
+          </Show>
           <TooltipKeybind placement={placement()} title={props.settingsLabel()} keybind={props.settingsKeybind() ?? ""}>
             <IconButton
               icon="settings-gear"

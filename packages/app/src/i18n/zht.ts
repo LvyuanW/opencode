@@ -30,6 +30,7 @@ export const dict = {
   "command.provider.connect": "連接提供者",
   "command.server.switch": "切換伺服器",
   "command.settings.open": "開啟設定",
+  "command.workspace.export": "匯出壓縮包",
   "command.session.previous": "上一個對話",
   "command.session.next": "下一個對話",
   "command.session.previous.unseen": "上一個未讀對話",

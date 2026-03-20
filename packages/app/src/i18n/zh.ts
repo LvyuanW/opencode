@@ -34,6 +34,7 @@ export const dict = {
   "command.server.switch": "切换服务器",
 
   "command.settings.open": "打开设置",
+  "command.workspace.export": "导出压缩包",
 
   "command.session.previous": "上一个对话",
   "command.session.next": "下一个对话",

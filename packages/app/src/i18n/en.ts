@@ -26,6 +26,7 @@ export const dict = {
   "command.provider.connect": "Connect provider",
   "command.server.switch": "Switch server",
   "command.settings.open": "Open settings",
+  "command.workspace.export": "Download archive",
   "command.session.previous": "Previous chat",
   "command.session.next": "Next chat",
   "command.session.previous.unseen": "Previous unread chat",
