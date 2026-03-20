@@ -6,6 +6,7 @@ import { type Platform, PlatformProvider } from "@/context/platform"
 import { dict as en } from "@/i18n/en"
 import { dict as zh } from "@/i18n/zh"
 import { handleNotificationClick } from "@/utils/notification-click"
+import { serverUrls } from "@/utils/server-url"
 import pkg from "../package.json"
 import { ServerConnection } from "./context/server"
 
@@ -97,21 +98,17 @@ if (!(root instanceof HTMLElement) && import.meta.env.DEV) {
   throw new Error(getRootNotFoundError())
 }
 
-const getCurrentUrl = () => {
-  if (location.hostname.includes("opencode.ai")) return "http://localhost:4096"
-  if (import.meta.env.DEV) {
-    const env = import.meta.env.VITE_OPENCODE_SERVER_HOST?.trim()
-    const host = !env || env === "0.0.0.0" || env === "::" ? location.hostname || "localhost" : env
-    return `http://${host}:${import.meta.env.VITE_OPENCODE_SERVER_PORT ?? "4096"}`
-  }
-  return location.origin
-}
-
-const getDefaultUrl = () => {
-  const lsDefault = readDefaultServerUrl()
-  if (lsDefault) return lsDefault
-  return getCurrentUrl()
-}
+const getServerUrls = () =>
+  serverUrls({
+    env: {
+      VITE_OPENCODE_SERVER_HOST: import.meta.env.VITE_OPENCODE_SERVER_HOST,
+      VITE_OPENCODE_SERVER_PORT: import.meta.env.VITE_OPENCODE_SERVER_PORT,
+      VITE_OPENCODE_SERVER_URL: import.meta.env.VITE_OPENCODE_SERVER_URL,
+    },
+    loc: location,
+    dev: import.meta.env.DEV,
+    defaultUrl: readDefaultServerUrl(),
+  })
 
 const platform: Platform = {
   platform: "web",
@@ -129,14 +126,19 @@ const platform: Platform = {
 }
 
 if (root instanceof HTMLElement) {
-  const server: ServerConnection.Http = { type: "http", http: { url: getCurrentUrl() } }
+  const list = getServerUrls()
   render(
     () => (
       <PlatformProvider value={platform}>
         <AppBaseProviders>
           <AppInterface
-            defaultServer={ServerConnection.Key.make(getDefaultUrl())}
-            servers={[server]}
+            defaultServer={ServerConnection.Key.make(list[0] ?? location.origin)}
+            servers={list.map(
+              (url): ServerConnection.Http => ({
+                type: "http",
+                http: { url },
+              }),
+            )}
             disableHealthCheck
           />
         </AppBaseProviders>
