@@ -668,6 +668,7 @@ export const dict = {
   "common.key.esc": "ESC",
   "sidebar.menu.toggle": "切換選單",
   "sidebar.nav.projectsAndSessions": "作品與對話",
+  "sidebar.writer.history": "歷史對話",
   "sidebar.settings": "設定",
   "sidebar.help": "說明",
   "sidebar.workspaces.enable": "啟用工作區",

@@ -24,12 +24,19 @@ export const SidebarContent = (props: {
   openProjectLabel: JSX.Element
   openProjectKeybind: Accessor<string | undefined>
   onOpenProject: () => void
+  showOpenProject?: boolean
+  historyLabel?: Accessor<string>
+  historyKeybind?: Accessor<string | undefined>
+  onToggleHistory?: () => void
+  historyExpanded?: Accessor<boolean>
+  showHistory?: boolean
   renderProjectOverlay: () => JSX.Element
   settingsLabel: Accessor<string>
   settingsKeybind: Accessor<string | undefined>
   onOpenSettings: () => void
   helpLabel: Accessor<string>
   onOpenHelp: () => void
+  showHelp?: boolean
   renderPanel: () => JSX.Element
 }): JSX.Element => {
   const expanded = createMemo(() => !!props.mobile || props.opened())
@@ -63,28 +70,46 @@ export const SidebarContent = (props: {
             <DragDropSensors />
             <ConstrainDragXAxis />
             <div class="h-full w-full flex flex-col items-center gap-3 px-3 py-3 overflow-y-auto no-scrollbar">
+              <Show when={props.showHistory}>
+                <TooltipKeybind
+                  placement={placement()}
+                  title={props.historyLabel?.() ?? ""}
+                  keybind={props.historyKeybind?.() ?? ""}
+                >
+                  <IconButton
+                    icon="bubble-5"
+                    variant="ghost"
+                    size="large"
+                    onClick={props.onToggleHistory}
+                    aria-label={props.historyLabel?.()}
+                    aria-expanded={props.historyExpanded?.()}
+                  />
+                </TooltipKeybind>
+              </Show>
               <SortableProvider ids={props.projects().map((p) => p.worktree)}>
                 <For each={props.projects()}>{(project) => props.renderProject(project)}</For>
               </SortableProvider>
-              <Tooltip
-                placement={placement()}
-                value={
-                  <div class="flex items-center gap-2">
-                    <span>{props.openProjectLabel}</span>
-                    <Show when={!props.mobile && !!props.openProjectKeybind()}>
-                      <span class="text-icon-base text-12-medium">{props.openProjectKeybind()}</span>
-                    </Show>
-                  </div>
-                }
-              >
-                <IconButton
-                  icon="plus"
-                  variant="ghost"
-                  size="large"
-                  onClick={props.onOpenProject}
-                  aria-label={typeof props.openProjectLabel === "string" ? props.openProjectLabel : undefined}
-                />
-              </Tooltip>
+              <Show when={props.showOpenProject !== false}>
+                <Tooltip
+                  placement={placement()}
+                  value={
+                    <div class="flex items-center gap-2">
+                      <span>{props.openProjectLabel}</span>
+                      <Show when={!props.mobile && !!props.openProjectKeybind()}>
+                        <span class="text-icon-base text-12-medium">{props.openProjectKeybind()}</span>
+                      </Show>
+                    </div>
+                  }
+                >
+                  <IconButton
+                    icon="plus"
+                    variant="ghost"
+                    size="large"
+                    onClick={props.onOpenProject}
+                    aria-label={typeof props.openProjectLabel === "string" ? props.openProjectLabel : undefined}
+                  />
+                </Tooltip>
+              </Show>
             </div>
             <DragOverlay>{props.renderProjectOverlay()}</DragOverlay>
           </DragDropProvider>
@@ -99,15 +124,17 @@ export const SidebarContent = (props: {
               aria-label={props.settingsLabel()}
             />
           </TooltipKeybind>
-          <Tooltip placement={placement()} value={props.helpLabel()}>
-            <IconButton
-              icon="help"
-              variant="ghost"
-              size="large"
-              onClick={props.onOpenHelp}
-              aria-label={props.helpLabel()}
-            />
-          </Tooltip>
+          <Show when={props.showHelp !== false}>
+            <Tooltip placement={placement()} value={props.helpLabel()}>
+              <IconButton
+                icon="help"
+                variant="ghost"
+                size="large"
+                onClick={props.onOpenHelp}
+                aria-label={props.helpLabel()}
+              />
+            </Tooltip>
+          </Show>
         </div>
       </div>
 

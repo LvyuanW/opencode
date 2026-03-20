@@ -754,6 +754,7 @@ export const dict = {
 
   "sidebar.menu.toggle": "Toggle menu",
   "sidebar.nav.projectsAndSessions": "Works and chats",
+  "sidebar.writer.history": "Chat history",
   "sidebar.settings": "Settings",
   "sidebar.help": "Help",
   "sidebar.workspaces.enable": "Enable workspaces",

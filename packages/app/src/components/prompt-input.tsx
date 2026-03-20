@@ -1526,7 +1526,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           </div>
         </div>
       </DockShellForm>
-      <Show when={!writer() && (store.mode === "normal" || store.mode === "shell")}>
+      <Show when={store.mode === "normal" || store.mode === "shell"}>
         <DockTray attach="top">
           <div class="px-1.75 pt-5.5 pb-2 flex items-center gap-2 min-w-0">
             <div class="flex items-center gap-1.5 min-w-0 flex-1 relative">
@@ -1541,26 +1541,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 <div class="size-4 shrink-0" />
               </div>
               <div class="flex items-center gap-1.5 min-w-0 flex-1">
-                <div data-component="prompt-agent-control">
-                  <TooltipKeybind
-                    placement="top"
-                    gutter={4}
-                    title={language.t("command.agent.cycle")}
-                    keybind={command.keybind("agent.cycle")}
-                  >
-                    <Select
-                      size="normal"
-                      options={agentNames()}
-                      current={local.agent.current()?.name ?? ""}
-                      onSelect={local.agent.set}
-                      class="capitalize max-w-[160px] text-text-base"
-                      valueClass="truncate text-13-regular text-text-base"
-                      triggerStyle={control()}
-                      triggerProps={{ "data-action": "prompt-agent" }}
-                      variant="ghost"
-                    />
-                  </TooltipKeybind>
-                </div>
+                <Show when={!writer()}>
+                  <div data-component="prompt-agent-control">
+                    <TooltipKeybind
+                      placement="top"
+                      gutter={4}
+                      title={language.t("command.agent.cycle")}
+                      keybind={command.keybind("agent.cycle")}
+                    >
+                      <Select
+                        size="normal"
+                        options={agentNames()}
+                        current={local.agent.current()?.name ?? ""}
+                        onSelect={local.agent.set}
+                        class="capitalize max-w-[160px] text-text-base"
+                        valueClass="truncate text-13-regular text-text-base"
+                        triggerStyle={control()}
+                        triggerProps={{ "data-action": "prompt-agent" }}
+                        variant="ghost"
+                      />
+                    </TooltipKeybind>
+                  </div>
+                </Show>
                 <div data-component="prompt-model-control">
                   <Show
                     when={providers.paid().length > 0}
@@ -1627,49 +1629,53 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     </TooltipKeybind>
                   </Show>
                 </div>
-                <div data-component="prompt-variant-control">
+                <Show when={!writer() || variants().length > 1}>
+                  <div data-component="prompt-variant-control">
+                    <TooltipKeybind
+                      placement="top"
+                      gutter={4}
+                      title={language.t("command.model.variant.cycle")}
+                      keybind={command.keybind("model.variant.cycle")}
+                    >
+                      <Select
+                        size="normal"
+                        options={variants()}
+                        current={local.model.variant.current() ?? "default"}
+                        label={(x) => (x === "default" ? language.t("common.default") : x)}
+                        onSelect={(x) => local.model.variant.set(x === "default" ? undefined : x)}
+                        class="capitalize max-w-[160px] text-text-base"
+                        valueClass="truncate text-13-regular text-text-base"
+                        triggerStyle={control()}
+                        triggerProps={{ "data-action": "prompt-model-variant" }}
+                        variant="ghost"
+                      />
+                    </TooltipKeybind>
+                  </div>
+                </Show>
+                <Show when={!writer()}>
                   <TooltipKeybind
                     placement="top"
-                    gutter={4}
-                    title={language.t("command.model.variant.cycle")}
-                    keybind={command.keybind("model.variant.cycle")}
+                    gutter={8}
+                    title={acceptLabel()}
+                    keybind={command.keybind("permissions.autoaccept")}
                   >
-                    <Select
-                      size="normal"
-                      options={variants()}
-                      current={local.model.variant.current() ?? "default"}
-                      label={(x) => (x === "default" ? language.t("common.default") : x)}
-                      onSelect={(x) => local.model.variant.set(x === "default" ? undefined : x)}
-                      class="capitalize max-w-[160px] text-text-base"
-                      valueClass="truncate text-13-regular text-text-base"
-                      triggerStyle={control()}
-                      triggerProps={{ "data-action": "prompt-model-variant" }}
+                    <Button
+                      data-action="prompt-permissions"
                       variant="ghost"
-                    />
+                      onClick={toggleAccept}
+                      classList={{
+                        "h-7 w-7 p-0 shrink-0 flex items-center justify-center": true,
+                        "text-text-base": !accepting(),
+                        "hover:bg-surface-success-base": accepting(),
+                      }}
+                      style={control()}
+                      aria-label={acceptLabel()}
+                      aria-pressed={accepting()}
+                    >
+                      <Icon name="shield" size="small" classList={{ "text-icon-success-base": accepting() }} />
+                    </Button>
                   </TooltipKeybind>
-                </div>
-                <TooltipKeybind
-                  placement="top"
-                  gutter={8}
-                  title={acceptLabel()}
-                  keybind={command.keybind("permissions.autoaccept")}
-                >
-                  <Button
-                    data-action="prompt-permissions"
-                    variant="ghost"
-                    onClick={toggleAccept}
-                    classList={{
-                      "h-7 w-7 p-0 shrink-0 flex items-center justify-center": true,
-                      "text-text-base": !accepting(),
-                      "hover:bg-surface-success-base": accepting(),
-                    }}
-                    style={control()}
-                    aria-label={acceptLabel()}
-                    aria-pressed={accepting()}
-                  >
-                    <Icon name="shield" size="small" classList={{ "text-icon-success-base": accepting() }} />
-                  </Button>
-                </TooltipKeybind>
+                </Show>
               </div>
             </div>
           </div>

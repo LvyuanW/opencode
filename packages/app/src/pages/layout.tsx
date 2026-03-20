@@ -1065,13 +1065,17 @@ export default function Layout(props: ParentProps) {
         keybind: "mod+b",
         onSelect: () => layout.sidebar.toggle(),
       },
-      {
-        id: "project.open",
-        title: language.t("command.project.open"),
-        category: language.t("command.category.project"),
-        keybind: "mod+o",
-        onSelect: () => chooseProject(),
-      },
+      ...(writer()
+        ? []
+        : [
+            {
+              id: "project.open",
+              title: language.t("command.project.open"),
+              category: language.t("command.category.project"),
+              keybind: "mod+o",
+              onSelect: () => chooseProject(),
+            } satisfies CommandOption,
+          ]),
       {
         id: "provider.connect",
         title: language.t("command.provider.connect"),
@@ -2327,7 +2331,7 @@ export default function Layout(props: ParentProps) {
       mobile={mobile}
       opened={() => layout.sidebar.opened()}
       aimMove={aim.move}
-      projects={projects}
+      projects={() => (writer() ? [] : projects())}
       renderProject={(project) => (
         <SortableProject ctx={projectSidebarCtx} project={project} sortNow={sortNow} mobile={mobile} />
       )}
@@ -2337,12 +2341,19 @@ export default function Layout(props: ParentProps) {
       openProjectLabel={language.t("command.project.open")}
       openProjectKeybind={() => command.keybind("project.open")}
       onOpenProject={chooseProject}
+      showOpenProject={!writer()}
+      historyLabel={() => language.t("sidebar.writer.history")}
+      historyKeybind={() => command.keybind("sidebar.toggle")}
+      onToggleHistory={layout.sidebar.toggle}
+      historyExpanded={() => layout.sidebar.opened()}
+      showHistory={writer()}
       renderProjectOverlay={projectOverlay}
       settingsLabel={() => language.t("sidebar.settings")}
       settingsKeybind={() => command.keybind("settings.open")}
       onOpenSettings={openSettings}
       helpLabel={() => language.t("sidebar.help")}
       onOpenHelp={() => platform.openLink("https://opencode.ai/desktop-feedback")}
+      showHelp={!writer()}
       renderPanel={() =>
         mobile ? (
           <SidebarPanel project={currentProject} mobile />

@@ -3,7 +3,6 @@ import { Bus } from "@/bus"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono } from "hono"
-import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import { proxy } from "hono/proxy"
 import { basicAuth } from "hono/basic-auth"
@@ -52,6 +51,34 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 
 export namespace Server {
   const log = Log.create({ service: "server" })
+
+  function allowOrigin(input: string | undefined, host: string | undefined, opts: { cors?: string[] }) {
+    if (!input) return
+
+    if (
+      input === "tauri://localhost" ||
+      input === "http://tauri.localhost" ||
+      input === "https://tauri.localhost"
+    )
+      return input
+
+    if (opts.cors?.includes(input)) return input
+
+    try {
+      const url = new URL(input)
+      if (url.protocol === "https:" && /^([a-z0-9-]+\.)*opencode\.ai$/.test(url.hostname)) {
+        return input
+      }
+
+      if (url.protocol !== "http:") return
+
+      const name = host?.split(":")[0]
+      if (name && url.hostname === name) return input
+      if (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1") return input
+    } catch {
+      return
+    }
+  }
 
   export const Default = lazy(() => createApp({}))
 
@@ -102,32 +129,24 @@ export namespace Server {
           timer.stop()
         }
       })
-      .use(
-        cors({
-          origin(input) {
-            if (!input) return
+      .use(async (c, next) => {
+        const origin = allowOrigin(c.req.header("origin"), c.req.header("host"), opts)
+        if (c.req.method === "OPTIONS") {
+          if (!origin) return c.body(null, 204)
+          c.header("Access-Control-Allow-Origin", origin)
+          c.header("Access-Control-Allow-Methods", "GET,HEAD,PUT,POST,DELETE,PATCH,OPTIONS")
+          c.header("Vary", "Origin")
+          const headers = c.req.header("access-control-request-headers")
+          if (headers) c.header("Access-Control-Allow-Headers", headers)
+          return c.body(null, 204)
+        }
 
-            if (input.startsWith("http://localhost:")) return input
-            if (input.startsWith("http://127.0.0.1:")) return input
-            if (
-              input === "tauri://localhost" ||
-              input === "http://tauri.localhost" ||
-              input === "https://tauri.localhost"
-            )
-              return input
+        await next()
 
-            // *.opencode.ai (https only, adjust if needed)
-            if (/^https:\/\/([a-z0-9-]+\.)*opencode\.ai$/.test(input)) {
-              return input
-            }
-            if (opts?.cors?.includes(input)) {
-              return input
-            }
-
-            return
-          },
-        }),
-      )
+        if (!origin) return
+        c.header("Access-Control-Allow-Origin", origin)
+        c.header("Vary", "Origin")
+      })
       .route("/global", GlobalRoutes())
       .put(
         "/auth/:providerID",
