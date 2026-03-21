@@ -27,6 +27,7 @@ import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
+import { normalizeAgents } from "@/context/global-sync/utils"
 import { messageAgentColor } from "@/utils/agent"
 import { parseCommentNote, readCommentMetadata } from "@/utils/comment-note"
 import { parseSelectionNote, readSelectionMetadata } from "@/utils/selection-note"
@@ -279,7 +280,7 @@ export function MessageTimeline(props: {
     return sync.data.session_status[id] ?? idle
   })
   const working = createMemo(() => !!pending() || sessionStatus().type !== "idle")
-  const tint = createMemo(() => messageAgentColor(sessionMessages(), sync.data.agent))
+  const tint = createMemo(() => messageAgentColor(sessionMessages(), normalizeAgents(sync.data.agent)))
 
   const [slot, setSlot] = createStore({
     open: false,

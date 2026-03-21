@@ -20,6 +20,7 @@ import { useServer } from "@/context/server"
 import { useSettings } from "@/context/settings"
 import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
+import { normalizeAgents } from "@/context/global-sync/utils"
 import { focusTerminalById } from "@/pages/session/helpers"
 import { useSessionLayout } from "@/pages/session/session-layout"
 import { messageAgentColor } from "@/utils/agent"
@@ -232,7 +233,7 @@ export function SessionHeader() {
   )
   const opening = createMemo(() => openRequest.app !== undefined)
   const tint = createMemo(() =>
-    messageAgentColor(params.id ? sync.data.message[params.id] : undefined, sync.data.agent),
+    messageAgentColor(params.id ? sync.data.message[params.id] : undefined, normalizeAgents(sync.data.agent)),
   )
 
   const selectApp = (app: OpenApp) => {
