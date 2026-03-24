@@ -28,3 +28,6 @@ opencode-dev
 logs/
 *.bun-build
 tsconfig.tsbuildinfo
+
+# 用户内容
+.writer-users/*
