@@ -400,7 +400,7 @@ export function FileTabContent(props: { tab: string }) {
     value: "",
   })
   const [pane, setPane] = createStore({
-    mode: "edit" as Mode,
+    mode: (writer() ? "preview" : "edit") as Mode,
   })
   const [pick, setPick] = createStore({
     current: null as Pick | null,
@@ -522,6 +522,7 @@ export function FileTabContent(props: { tab: string }) {
           saving: false,
           value: "",
         })
+        setPane("mode", writer() ? "preview" : "edit")
         setPick("current", null)
         setPick("bubble", null)
       },
